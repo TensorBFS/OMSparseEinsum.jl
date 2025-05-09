@@ -66,7 +66,7 @@ function get_outer(ni::Val{Ni}, nb::Val{Nb}, xs::BitStr...) where {Ni,Nb}
 end
 
 function sparse_contract(ni::Val{Ni}, nb::Val{Nb}, a::BinarySparseTensor{T1,Ti,M}, b::BinarySparseTensor{T2,Ti,N}) where {T1,T2,Ni,Nb,N,M,Ti}
-    out = OMEinsum.get_output_array((a,b), (fill(2, M+N-2Ni-Nb)...,))
+    out = OMEinsum.get_output_array((a,b), (fill(2, M+N-2Ni-Nb)...,), true)
     ia, va = findnz(a)
     ib, vb = findnz(b)
     chasing_game(x->get_inner_and_batch(ni, nb, x), (ia,ib)) do la, lb

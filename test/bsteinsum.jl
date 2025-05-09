@@ -49,7 +49,7 @@ end
 end
 
 @testset "einsum batched contract" begin
-    perms = MISAlgorithms.analyse_batched_perm(('b','j','c','a','e'), ('k','d','c','a','e'), ('b','j','k','d','c'))
+    perms = SparseTN.analyse_batched_perm(('b','j','c','a','e'), ('k','d','c','a','e'), ('b','j','k','d','c'))
     @test perms == ([1, 2, 3, 4, 5], [1, 2, 3, 4, 5], (1, 2, 3, 4, 5), 2, 1)
 
     sv = SparseVector([1.0,0,0,1,1,0,0,0])
@@ -79,10 +79,10 @@ end
 @testset "sum, ptrace and permute" begin
     ta = bstrand(7, 0.7)
     TA = Array(ta)
-    res = dropsum(ta, dims=(2,4))
+    res = SparseTN.dropsum(ta, dims=(2,4))
     @test res isa BinarySparseTensor
-    @test Array(res) ≈ dropsum(TA, dims=(2,4))
-    @test dropsum(ta) ≈ dropsum(TA)
+    @test Array(res) ≈ SparseTN.dropsum(TA, dims=(2,4))
+    @test SparseTN.dropsum(ta) ≈ SparseTN.dropsum(TA)
     @test sum(ta) ≈ sum(TA)
     # sum
     res = ein"ijklbca->"(ta)

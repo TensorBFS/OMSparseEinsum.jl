@@ -1,4 +1,4 @@
-function OMEinsum.unary_einsum!(::OMEinsum.Sum, ix, iy, x::BinarySparseTensor, y, sx, sy)
+function OMEinsum.unary_einsum!(::OMEinsum.Sum, ix, iy, x::BinarySparseTensor, y::BinarySparseTensor, sx, sy)
     dims = (findall(i -> i ∉ iy, ix)...,)
     ix1f = filter!(i -> i in iy, collect(ix))
     perm = map(i -> findfirst(==(i), ix1f), iy)
@@ -6,137 +6,185 @@ function OMEinsum.unary_einsum!(::OMEinsum.Sum, ix, iy, x::BinarySparseTensor, y
     perm == iy ? res : permutedims(res, perm)
 end
 
-function cleanup_dangling_nlegs(ixs, xs, iy)
+function cleanup_dangling_nlegs(ixs::Vector{Vector{LT}}, xs, iy::Vector{LT}) where LT
     lc = count_legs(ixs..., iy)
     danglegsin, danglegsout = dangling_nleg_labels(ixs, iy, lc)
     newxs = Any[xs...]
-    newixs = Any[ixs...]
+    newixs = [ixs...]
     newiy = iy
     for i = 1:length(xs)
         ix, dlx = newixs[i], danglegsin[i]
         if !isempty(dlx)
             newxs[i] = multidropsum(xs[i], dims=[findall(==(l), ix) for l in dlx])
-            newixs[i] = (filter(l->l∉dlx, [ix...])...,)
+            newixs[i] = filter(l->l∉dlx, [ix...])
         end
     end
     if !isempty(danglegsout)
-        newiy = ([l for l in newiy if l ∉ danglegsout]...,)
+        newiy = [l for l in newiy if l ∉ danglegsout]
     end
     return newixs, newxs, newiy
 end
 
-function cleanup_dumplicated_legs(ixs, xs, iy)
+function cleanup_dumplicated_legs(ixs::Vector{Vector{LT}}, xs, iy::Vector{LT}) where LT
     newxs = Any[xs...]
-    newixs = Any[ixs...]
+    newixs = collect(ixs)
     for i in 1:length(xs)
         ix = ixs[i]
         if !allunique(ix)
-            newix = (tunique(ix)...,)
-            newxs[i] = einsum(IndexReduction(), EinCode{(ix,), newix}(), (xs[i],), OMEinsum.get_size_dict((ix,), (xs[i],)))
+            newix = unique(ix)
+            newxs[i] = impl_reduction(EinCode([ix], newix), (xs[i],), OMEinsum.get_size_dict([ix], (xs[i],)))
             newixs[i] = newix
         end
     end
     newiy = iy
     if !allunique(newiy)
-        newiy = (tunique(newiy)...,)
+        newiy = unique(newiy)
     end
     return newixs, newxs, newiy
 end
 
-function OMEinsum.einsum(code::EinCode, xs::NTuple{NT, BinarySparseTensor}, size_dict) where {NT}
-    ixs, iy = OMEinsum.getixsv(code), OMEinsum.getiyv(code)
-    if OMEinsum.match_rule(IndexCopy(), code)
-        return einsum(IndexCopy(), code, xs, size_dict)
-    elseif OMEinsum.match_rule(IndexBroadcast(), code)
-        return einsum(IndexBroadcast(), code, xs, size_dict)
+for ET in [:StaticEinCode, :DynamicEinCode]
+    @eval function OMEinsum.einsum(code::$ET, xs::NTuple{NT, BinarySparseTensor}, size_dict::Dict) where {NT}
+        ixs, iy = OMEinsum.getixsv(code), OMEinsum.getiyv(code)
+        if length(ixs) == 1   # unary operations
+            ix, x = ixs[1], xs[1]
+            return einsum_unary(ix, iy, x, size_dict)
+        end
+        # dangling legs or multi-legs
+        ycode = empty(iy)
+        newixs, newxs, newiy = cleanup_dangling_nlegs(ixs, xs, iy)
+        @show newixs, newiy
+        newiy!=iy && pushfirst!(ycode, EinCode((newiy,), iy))
+        newixs, newxs, newnewiy = cleanup_dumplicated_legs(newixs, newxs, newiy)
+        newiy!=newnewiy && pushfirst!(ycode, EinCode((newnewiy,), newiy))
+        @show ycode
+        #newixs == ixs && newnewiy == iy && throw(ArgumentError("Einsum not implemented for $code"))
+        # dangling merge multi-legs to one leg
+        res = einsum(EinCode(newixs, newnewiy), (newxs...,), size_dict)
+        for code in ycode
+            # TODO: broadcast and duplicate
+            res = einsum(code, (res,), size_dict)
+        end
+        return res
     end
-    # dangling legs or multi-legs
-    ycode = []
-    newixs, newxs, newiy = cleanup_dangling_nlegs(ixs, xs, iy)
-    newiy!=iy && pushfirst!(ycode, EinCode{(newiy,), iy}())
-    newixs, newxs, newnewiy = cleanup_dumplicated_legs(newixs, newxs, newiy)
-    newiy!=newnewiy && pushfirst!(ycode, EinCode{(newnewiy,), newiy}())
-    @show ycode
-    newixs == ixs && newnewiy == iy && throw(ArgumentError("Einsum not implemented for $code"))
-    # dangling merge multi-legs to one leg
-    res = einsum(EinCode{(newixs...,), newnewiy}(), newxs, size_dict)
-    for code in ycode
-        # TODO: broadcast and duplicate
-        res = einsum(code, (res,), size_dict)
-    end
-    return res
 end
 
-struct IndexReduction<:OMEinsum.EinRule{1} end
-struct IndexCopy<:OMEinsum.EinRule{1} end
-struct IndexBroadcast<:OMEinsum.EinRule{1} end
+function einsum_unary(ix, iy, x, size_dict)
+    Nx = length(ix)
+    Ny = length(iy)
+    # the first rule with the higher the priority
+    if Ny == 0 && Nx == 2 && ix[1] == ix[2]    # trace
+        return impl_trace(ix, iy, x, size_dict)
+    elseif allunique(iy)
+        @info iy
+        if ix == iy
+            return x
+        elseif allunique(ix)
+            if Nx == Ny
+                if all(i -> i in iy, ix)
+                    return impl_permutedims(ix, iy, x, size_dict)
+                else  # e.g. (abcd->bcde)
+                    throw(ArgumentError("Einsum not implemented for $ix -> $iy"))
+                end
+            else
+                if all(i -> i in ix, iy)
+                    return impl_sum(ix, iy, x, size_dict)
+                elseif all(i -> i in iy, ix)  # e.g. ij->ijk
+                    return impl_repeat(ix, iy, x, size_dict)
+                else  # e.g. ijkxc,ijkl
+                    throw(ArgumentError("Einsum not implemented for $ix -> $iy"))
+                end
+            end
+        else  # ix is not unique
+            if all(i -> i in ix, iy) && all(i -> i in iy, ix)   # ijjj->ij
+                return impl_diag(ix, iy, x, size_dict)
+            else
+                throw(ArgumentError("Einsum not implemented for $ix -> $iy"))
+            end
+        end
+    else  # iy is not unique
+        if allunique(ix) && all(x->x∈iy, ix)
+            if all(y->y∈ix, iy)  # e.g. ij->ijjj
+                return impl_repeat(ix, iy, x, size_dict)
+            else  # e.g. ij->ijjl
+                throw(ArgumentError("Einsum not implemented for $ix -> $iy"))
+            end
+        else
+            throw(ArgumentError("Einsum not implemented for $ix -> $iy"))
+        end
+    end
+end
 
-function OMEinsum.match_rule(::IndexReduction, code::EinCode)
-    ixs, iy = OMEinsum.getixsv(code), OMEinsum.getiyv(code)
-    length(ixs) > 1 && return false
-    ix = ixs[1]
+function is_reduction(ix::Vector{LT}, iy::Vector{LT}) where LT
+    isempty(ix) && return false  # avoid matching "->"
     (allunique(ix) || !allunique(iy)) && return false
     allin(iy, ix) && allin(ix, iy) || return false
     return true
 end
 
-function OMEinsum.match_rule(::IndexCopy, code::EinCode)
-    ixs, iy = OMEinsum.getixsv(code), OMEinsum.getiyv(code)
-    length(ixs) > 1 && return false
-    ix = ixs[1]
+function is_copy(ix::Vector{LT}, iy::Vector{LT}) where LT
+    isempty(ix) && return false  # avoid matching "->"
     (!allunique(ix) || allunique(iy)) && return false
     allin(iy, ix) && allin(ix, iy) || return false
     return true
 end
 
-function OMEinsum.match_rule(::IndexBroadcast, code::EinCode)
-    ixs, iy = OMEinsum.getixsv(code), OMEinsum.getiyv(code)
-    length(ixs) > 1 && return false
-    ix = ixs[1]
+function is_broadcast(ix::Vector{LT}, iy::Vector{LT}) where LT
+    isempty(ix) && return false  # avoid matching "->"
     !allunique(ix) && return false
     allin(ix, iy) || return false
-    filter(iiy->(iiy in ix), [iy...]) == [ix...] || return false
+    filter(iiy->(iiy ∈ ix), [iy...]) == [ix...] || return false
     return true
 end
 
-function _get_reductions(ix, iy)
-    reds = []
+function _get_reductions(ix::Vector{LT}, iy::Vector{LT}) where LT
+    reds = Vector{Int}[]
     for l in iy
         count(==(l), ix) > 1 && push!(reds, findall(==(l), ix))
     end
     return reds
 end
 
-function _get_traces(ix, iy)
-    reds = []
-    for l in tunique(ix)
+function _get_traces(ix::Vector{LT}, iy::Vector{LT}) where LT
+    reds = Vector{Int}[]
+    for l in unique(ix)
         l ∉ iy && count(==(l), ix) > 1 && push!(reds, findall(==(l), ix))
     end
     return reds
 end
 
-function index_reduction(code::EinCode, xs::Tuple{<:BinarySparseTensor}, size_dict)
-    ixs, iy = OMEinsum.getixsv(code), OMEinsum.getiyv(code)
-    reduce_indices(xs[1], _get_reductions(ixs[1], iy))
+function impl_reduction(ix::Vector{LT}, iy::Vector{LT}, x::BinarySparseTensor, size_dict) where LT
+    @debug "Reduction" ix => iy size(x)
+    reduce_indices(x, _get_reductions(ix, iy))  
 end
 
-function index_copy(code::EinCode, xs::Tuple{<:BinarySparseTensor}, size_dict)
-    ixs, iy = OMEinsum.getixsv(code), OMEinsum.getiyv(code)
-    ix = ixs[1]
-    copy_indices(xs[1], map(l->(findall(==(l), iy)...,), ix))
+function impl_copy(ix::Vector{LT}, iy::Vector{LT}, x::BinarySparseTensor, size_dict) where LT
+    @debug "Copy" ix => iy size(x)
+    copy_indices(x, map(l->(findall(==(l), iy)...,), ix))
 end
 
-function index_broadcast(code::EinCode, xs::Tuple{<:BinarySparseTensor}, size_dict)
-    ixs, iy = OMEinsum.getixsv(code), OMEinsum.getiyv(code)
-    ix = ixs[1]
+function impl_broadcast(ix::Vector{LT}, iy::Vector{LT}, x::BinarySparseTensor, size_dict) where LT
+    @debug "Broadcast" ix => iy size(x)
     throw(ArgumentError("Not implemented"))
 end
 
-function index_trace(code::EinCode, xs::Tuple{<:BinarySparseTensor}, size_dict)
-    ixs, iy = OMEinsum.getixsv(code), OMEinsum.getiyv(code)
-    res = trace_indices(xs[1]; dims=_get_traces(ixs[1], iy))
-    newix = (filter(ix->ix ∈ iy, [ixs[1]...])...,)
-    return einsum(EinCode{(newix,), iy}(), (res,), size_dict)
+function impl_trace(ix::Vector{LT}, iy::Vector{LT}, x::BinarySparseTensor, size_dict) where LT
+    @debug "Trace" ix => iy size(x) newix
+    res = trace_indices(x; dims=_get_traces(ix, iy))
+    newix = filter(ix->ix ∈ iy, [ix...])
+    return einsum(EinCode([newix], iy), (res,), size_dict)
+end
+
+function impl_sum(ix::Vector{LT}, iy::Vector{LT}, x::BinarySparseTensor, size_dict) where LT
+    @debug "Sum" ix => iy size(x) dims
+    dims = (findall(i -> i ∉ iy, ix)...,)
+    return dropsum(x, dims=dims)
+end
+
+function impl_permutedims(ix::Vector{LT}, iy::Vector{LT}, x::BinarySparseTensor, size_dict) where LT
+    @debug "Permutedims" ix => iy size(x) perm
+    perm = ntuple(i -> findfirst(==(iy[i]), ix)::Int, length(iy))
+    return tensorpermute(x, perm)
 end
 
 function _ymask_from_reds(::Type{Ti}, ndim::Int, reds) where Ti
@@ -160,7 +208,7 @@ function _ymask_from_trs(::Type{Ti}, ndim::Int, reds) where Ti
     return ymask
 end
 
-function reduce_indices(t::BinarySparseTensor{Tv,Ti}, reds) where {Tv,Ti}
+function reduce_indices(t::BinarySparseTensor{Tv,Ti}, reds::Vector{Vector{LT}}) where {Tv,Ti,LT}
     inds = Ti[]
     vals = Tv[]
     ymask = _ymask_from_reds(Ti, ndims(t), reds)
@@ -178,7 +226,7 @@ function reduce_indices(t::BinarySparseTensor{Tv,Ti}, reds) where {Tv,Ti}
     return BinarySparseTensor(SparseVector(1<<length(bits), inds[order], vals[order]))
 end
 
-function copy_indices(t::BinarySparseTensor{Tv,Ti}, targets) where {Tv,Ti}
+function copy_indices(t::BinarySparseTensor{Tv,Ti}, targets::Vector{Vector{LT}}) where {Tv,Ti,LT}
     inds = Ti[]
     vals = Tv[]
     nbits = sum(length, targets)
@@ -193,7 +241,7 @@ function copy_indices(t::BinarySparseTensor{Tv,Ti}, targets) where {Tv,Ti}
     return BinarySparseTensor(SparseVector(1<<nbits, inds[order], vals[order]))
 end
 
-function copybits(b::Ti, targets) where Ti
+function copybits(b::Ti, targets::Vector{Vector{LT}}) where {Ti,LT}
     res = Ti(0)
     for (i,t) in enumerate(targets)
         for it in t
@@ -203,7 +251,7 @@ function copybits(b::Ti, targets) where Ti
     return res
 end
 
-function trace_indices(t::BinarySparseTensor{Tv,Ti}; dims) where {Tv,Ti}
+function trace_indices(t::BinarySparseTensor{Tv,Ti}; dims::Vector{Vector{LT}}) where {Tv,Ti,LT}
     ymask = _ymask_from_trs(Ti, ndims(t), dims)
     bits = baddrs(ymask)
     red_masks = [bmask(Ti, red...) for red in dims]
@@ -212,7 +260,7 @@ function trace_indices(t::BinarySparseTensor{Tv,Ti}; dims) where {Tv,Ti}
     for (ind, val) in zip(t.data.nzind, t.data.nzval)
         b = ind-1
         if all(red->allsame(b, red), red_masks)
-            b = readbit(b, bits...)
+            b = isempty(bits) ? zero(b) : readbit(b, bits...)
             sv[b+1] += val
         end
     end
@@ -225,7 +273,7 @@ function _dropsum(f, t::BinarySparseTensor{Tv,Ti,N}, dims) where {Tv,Ti,N}
     Tf = typeof(f(Tv(0)))
     d = Dict{Ti,Tf}()
     for (ind, val) in zip(t.data.nzind, t.data.nzval)
-        rd = readbit(ind-1, remdims...)
+        rd = isempty(remdims) ? zero(ind) : readbit(ind-1, remdims...)
         d[rd] = get(d, rd, Tf(0)) + f(val)
     end
     ks = collect(keys(d))
