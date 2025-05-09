@@ -1,5 +1,15 @@
 module SparseTN
 
-# Write your package code here.
+using BitBasis, SparseArrays
+using Base.Cartesian
+using OMEinsum, OMEinsum.TupleTools
+using OMEinsum: allunique
+
+export bst_zeros, bstrand, BinarySparseTensor, sparse_contract, bst, bpermute
+
+include("BinarySparseTensor.jl")
+include("patches.jl")
+include("batched_gemm.jl")
+include("index_reduction.jl")
 
 end
