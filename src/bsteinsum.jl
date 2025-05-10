@@ -54,10 +54,10 @@ for ET in [:StaticEinCode, :DynamicEinCode]
         newixs, newxs, newnewiy = cleanup_duplicated_legs(newixs, newxs, newiy)
 
         # dangling merge multi-legs to one leg
-        res = einsum(EinCode(newixs, newnewiy), (newxs...,), size_dict)
+        res = batched_contract(newixs, newnewiy, (newxs...,))
 
         # Duplicate (or diag)
-        return einsum(EinCode(newnewiy, iy), (res,), size_dict)
+        return einsum(EinCode([newnewiy], iy), (res,), size_dict)
     end
 end
 

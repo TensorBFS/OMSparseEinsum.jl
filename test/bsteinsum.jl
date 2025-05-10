@@ -70,7 +70,6 @@ end
     tb = bstrand(6, 0.5)
     TA, TB = Array(ta), Array(tb)
     code = ein"ijklmbc,ijbxcy->bcmlxky"
-    @test OMEinsum.match_rule(code) == OMEinsum.BatchedContract()
     res = code(ta, tb)
     @test res isa BinarySparseTensor
     @test Array(res) ≈ code(TA, TB)
@@ -126,11 +125,11 @@ end
     TA = Array(ta)
     # first reduce indices
     for code in [ein"i->iii", ein"i->jj", ein"k->kkj"]
-        res = code(ta, size_info=IndexSize('j'=>2))
+        res = code(ta, size_info=Dict('j'=>2))
         @show code
         @test res isa BinarySparseTensor
-        @show size(res), size(code(TA, size_info=IndexSize('j'=>2)))
-        @test res ≈ code(TA, size_info=IndexSize('j'=>2))
+        @show size(res), size(code(TA, size_info=Dict('j'=>2)))
+        @test res ≈ code(TA, size_info=Dict('j'=>2))
     end
     ta = bstrand(7, 0.5)
     TA = Array(ta)
@@ -143,29 +142,21 @@ end
 end
 
 @testset "clean up" begin
-    @test MISAlgorithms._ymask_from_reds(Int, 5, [[2,3], [4,1]]) == bmask(5,2,4)
-    @test !OMEinsum.match_rule(MISAlgorithms.IndexReduction(), ein"ijk->ijk")
-    @test OMEinsum.match_rule(MISAlgorithms.IndexReduction(), ein"ijkj->ijk")
-    @test !OMEinsum.match_rule(MISAlgorithms.IndexReduction(), ein"ijkjl->ijk")
-    @test OMEinsum.match_rule(MISAlgorithms.IndexCopy(), ein"ij->iij")
-    @test !OMEinsum.match_rule(MISAlgorithms.IndexCopy(), ein"ij->iijk")
-    @test !OMEinsum.match_rule(MISAlgorithms.IndexBroadcast(), ein"ijl->ikkijl")
-    @test !OMEinsum.match_rule(MISAlgorithms.IndexBroadcast(), ein"ikj->kijl")
-    @test OMEinsum.match_rule(MISAlgorithms.IndexBroadcast(), ein"ikj->ikjl")
-
-    @test allsame(bit"000110", bmask(BitStr64{6}, 2,3))
-    @test !allsame(bit"000110", bmask(BitStr64{6}, 2,4))
-    @test MISAlgorithms._get_reductions((1,2,2,4,3,1,5), (1,2,3,4,5)) == [[1,6], [2,3]]
-
-    @test MISAlgorithms.getalllabels(ein"ijk,jkl->oo") == ['i', 'j', 'k', 'l', 'o']
+    @test SparseTN._ymask_from_reds(Int, 5, [[2,3], [4,1]]) == bmask(5,2,4)
+    @test SparseTN.allsame(bit"000110", bmask(BitStr64{6}, 2,3))
+    @test !SparseTN.allsame(bit"000110", bmask(BitStr64{6}, 2,4))
+    @test SparseTN._get_reductions([1,2,2,4,3,1,5], [1,2,3,4,5]) == [[1,6], [2,3]]
+    @test SparseTN.uniquelabels(ein"ijk,jkl->oo") == ['i', 'j', 'k', 'l', 'o']
 end
 
 
 @testset "count legs" begin
-    @test MISAlgorithms.count_legs((1,2), (2,3), (1,3)) == Dict(1=>2,2=>2,3=>2)
-    @test MISAlgorithms.dangling_legs(((1,1,2), (2,3)), (5,7)) == (((), (2,)), (1,2))
-    @test MISAlgorithms.dangling_nleg_labels(((1,1,2), (2,3)), (5,7)) == (((1,), (3,)), (5,7))
+    @test SparseTN.count_legs((1,2), (2,3), (1,3)) == Dict(1=>2,2=>2,3=>2)
+    @test SparseTN.dangling_legs(((1,1,2), (2,3)), (5,7)) == (((), (2,)), (1,2))
+    @test SparseTN.dangling_nleg_labels(((1,1,2), (2,3)), (5,7)) == (((1,), (3,)), (5,7))
 end
 
-MISAlgorithms.unsetbit(bit"111100", bit"001101") == bit"110000"
-MISAlgorithms.copybits(0b110, ((1,2), (5,4), (3,))) == 0b11100
+@testset "unsetbit, copybits" begin
+    @test SparseTN.unsetbit(bit"111100", bit"001101") == bit"110000"
+    @test SparseTN.copybits(0b110, [[1,2], [5,4], [3]]) == 0b11100
+end

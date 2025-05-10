@@ -79,8 +79,7 @@ function sparse_contract(ni::Val{Ni}, nb::Val{Nb}, a::BinarySparseTensor{T1,Ti,M
     return out
 end
 
-function batched_contract(code::EinCode, xs::NTuple{NT, BinarySparseTensor}, size_dict) where {NT}
-    ixs, iy = OMEinsum.getixsv(code), OMEinsum.getiyv(code)
+function batched_contract(ixs, iy, xs::NTuple{NT, BinarySparseTensor}) where {NT}
     a, b = xs
     pa, pb, pout, Ni, Nb = analyse_batched_perm(ixs..., iy)
     A = copy(a)
