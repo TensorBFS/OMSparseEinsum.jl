@@ -32,7 +32,7 @@ function cleanup_dumplicated_legs(ixs::Vector{Vector{LT}}, xs, iy::Vector{LT}) w
         ix = ixs[i]
         if !allunique(ix)
             newix = unique(ix)
-            newxs[i] = impl_reduction(EinCode([ix], newix), (xs[i],), OMEinsum.get_size_dict([ix], (xs[i],)))
+            newxs[i] = impl_reduction(ix, newix, xs[i], OMEinsum.get_size_dict([ix], (xs[i],)))
             newixs[i] = newix
         end
     end
@@ -72,10 +72,13 @@ end
 function einsum_unary(ix, iy, x, size_dict)
     Nx = length(ix)
     Ny = length(iy)
-    # the first rule with the higher the priority
-    if Ny == 0 && Nx == 2 && ix[1] == ix[2]    # trace
-        return impl_trace(ix, iy, x, size_dict)
-    elseif allunique(iy)
+    trace_dims = _get_ptraces(ix, iy)
+    !isempty(trace_dims) && return impl_ptrace(ix, iy, x, trace_dims, size_dict)
+
+    reduce_dims = _get_reductions(ix, iy)
+    !isempty(reduce_dims) && return impl_reduction(ix, iy, x, reduce_dims, size_dict)
+
+    if allunique(iy)
         @info iy
         if ix == iy
             return x
@@ -97,7 +100,7 @@ function einsum_unary(ix, iy, x, size_dict)
             end
         else  # ix is not unique
             if all(i -> i in ix, iy) && all(i -> i in iy, ix)   # ijjj->ij
-                return impl_diag(ix, iy, x, size_dict)
+                return impl_reduction(ix, iy, x, size_dict)
             else
                 throw(ArgumentError("Einsum not implemented for $ix -> $iy"))
             end
@@ -115,28 +118,6 @@ function einsum_unary(ix, iy, x, size_dict)
     end
 end
 
-function is_reduction(ix::Vector{LT}, iy::Vector{LT}) where LT
-    isempty(ix) && return false  # avoid matching "->"
-    (allunique(ix) || !allunique(iy)) && return false
-    allin(iy, ix) && allin(ix, iy) || return false
-    return true
-end
-
-function is_copy(ix::Vector{LT}, iy::Vector{LT}) where LT
-    isempty(ix) && return false  # avoid matching "->"
-    (!allunique(ix) || allunique(iy)) && return false
-    allin(iy, ix) && allin(ix, iy) || return false
-    return true
-end
-
-function is_broadcast(ix::Vector{LT}, iy::Vector{LT}) where LT
-    isempty(ix) && return false  # avoid matching "->"
-    !allunique(ix) && return false
-    allin(ix, iy) || return false
-    filter(iiy->(iiy ∈ ix), [iy...]) == [ix...] || return false
-    return true
-end
-
 function _get_reductions(ix::Vector{LT}, iy::Vector{LT}) where LT
     reds = Vector{Int}[]
     for l in iy
@@ -145,7 +126,7 @@ function _get_reductions(ix::Vector{LT}, iy::Vector{LT}) where LT
     return reds
 end
 
-function _get_traces(ix::Vector{LT}, iy::Vector{LT}) where LT
+function _get_ptraces(ix::Vector{LT}, iy::Vector{LT}) where LT
     reds = Vector{Int}[]
     for l in unique(ix)
         l ∉ iy && count(==(l), ix) > 1 && push!(reds, findall(==(l), ix))
@@ -153,9 +134,9 @@ function _get_traces(ix::Vector{LT}, iy::Vector{LT}) where LT
     return reds
 end
 
-function impl_reduction(ix::Vector{LT}, iy::Vector{LT}, x::BinarySparseTensor, size_dict) where LT
+function impl_reduction(ix::Vector{LT}, iy::Vector{LT}, x::BinarySparseTensor, dims, size_dict) where LT
     @debug "Reduction" ix => iy size(x)
-    reduce_indices(x, _get_reductions(ix, iy))  
+    reduce_indices(x, dims)  
 end
 
 function impl_copy(ix::Vector{LT}, iy::Vector{LT}, x::BinarySparseTensor, size_dict) where LT
@@ -168,9 +149,9 @@ function impl_broadcast(ix::Vector{LT}, iy::Vector{LT}, x::BinarySparseTensor, s
     throw(ArgumentError("Not implemented"))
 end
 
-function impl_trace(ix::Vector{LT}, iy::Vector{LT}, x::BinarySparseTensor, size_dict) where LT
-    @debug "Trace" ix => iy size(x) newix
-    res = trace_indices(x; dims=_get_traces(ix, iy))
+function impl_ptrace(ix::Vector{LT}, iy::Vector{LT}, x::BinarySparseTensor, dims, size_dict) where LT
+    @debug "Ptrace" ix => iy size(x) newix
+    res = trace_indices(x; dims)
     newix = filter(ix->ix ∈ iy, [ix...])
     return einsum(EinCode([newix], iy), (res,), size_dict)
 end

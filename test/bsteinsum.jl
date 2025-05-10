@@ -98,7 +98,6 @@ end
     res = ein"ii->"(tb)
     @test res isa BinarySparseTensor
     @test Array(res) ≈ ein"ii->"(TB)
-    @test OMEinsum.match_rule(ein"ijjlbca->ailcb") == OMEinsum.PTrace()
 
     # reduction
     code = ein"ijjlbbb->ijlb"

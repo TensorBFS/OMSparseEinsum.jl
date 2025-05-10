@@ -10,6 +10,6 @@ export bst_zeros, bstrand, BinarySparseTensor, sparse_contract, bst, bpermute
 include("BinarySparseTensor.jl")
 include("patches.jl")
 include("batched_gemm.jl")
-include("index_reduction.jl")
+include("bsteinsum.jl")
 
 end
