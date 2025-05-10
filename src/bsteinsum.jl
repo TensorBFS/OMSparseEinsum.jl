@@ -1,11 +1,3 @@
-function OMEinsum.unary_einsum!(::OMEinsum.Sum, ix, iy, x::BinarySparseTensor, y::BinarySparseTensor, sx, sy)
-    dims = (findall(i -> i ∉ iy, ix)...,)
-    ix1f = filter!(i -> i in iy, collect(ix))
-    perm = map(i -> findfirst(==(i), ix1f), iy)
-    res = dropsum(xs[1], dims=dims)
-    perm == iy ? res : permutedims(res, perm)
-end
-
 function cleanup_dangling_nlegs(ixs::Vector{Vector{LT}}, xs, iy::Vector{LT}) where LT
     lc = count_legs(ixs..., iy)
     danglegsin, danglegsout = dangling_nleg_labels(ixs, iy, lc)
@@ -62,27 +54,31 @@ for ET in [:StaticEinCode, :DynamicEinCode]
 end
 
 function einsum_unary(ix, iy, x)
-    if !allunique(iy) || !isempty(setdiff(iy, ix))
-        throw(ArgumentError("Einsum not implemented for unary operation with non-unique, or new output indices: $ix -> $iy"))
+    if !isempty(setdiff(iy, ix))
+        throw(ArgumentError("Einsum not implemented for unary operation with new output indices: $ix -> $iy"))
     end
+    iy_mid = unique(iy)
 
     # Remove dimensions that can be traced out
-    trace_dims = _get_ptraces(ix, iy)
+    trace_dims = _get_ptraces(ix, iy_mid)
     if !isempty(trace_dims)
         x = trace_indices(x; dims=trace_dims)
-        ix = filter(ix->ix ∈ iy, [ix...])
+        ix = filter(ix->ix ∈ iy_mid, [ix...])
     end
 
     # Reduce duplicated indices
-    reduce_dims = _get_reductions(ix, iy)
+    reduce_dims = _get_reductions(ix, iy_mid)
     if !isempty(reduce_dims)
         x = reduce_indices(x, reduce_dims)
         ix = unique(ix)
     end
 
     # Permute to the wanted order
-    perm = map(item -> findfirst(==(item), ix), iy)
-    return permutedims(x, perm)
+    perm = map(item -> findfirst(==(item), ix), iy_mid)
+    x = permutedims(x, perm)
+
+    # Copy indices
+    copy_indices(x, map(l->findall(==(l), iy), iy_mid))
 end
 
 function _get_reductions(ix::Vector{LT}, iy::Vector{LT}) where LT
@@ -99,23 +95,6 @@ function _get_ptraces(ix::Vector{LT}, iy::Vector{LT}) where LT
         l ∉ iy && push!(reds, findall(==(l), ix))
     end
     return reds
-end
-
-function impl_copy(ix::Vector{LT}, iy::Vector{LT}, x::BinarySparseTensor, size_dict) where LT
-    @debug "Copy" ix => iy size(x)
-    copy_indices(x, map(l->(findall(==(l), iy)...,), ix))
-end
-
-function impl_sum(ix::Vector{LT}, iy::Vector{LT}, x::BinarySparseTensor, size_dict) where LT
-    @debug "Sum" ix => iy size(x) dims
-    dims = (findall(i -> i ∉ iy, ix)...,)
-    return dropsum(x, dims=dims)
-end
-
-function impl_permutedims(ix::Vector{LT}, iy::Vector{LT}, x::BinarySparseTensor, size_dict) where LT
-    @debug "Permutedims" ix => iy size(x) perm
-    perm = ntuple(i -> findfirst(==(iy[i]), ix)::Int, length(iy))
-    return tensorpermute(x, perm)
 end
 
 function _ymask_from_reds(::Type{Ti}, ndim::Int, reds) where Ti
@@ -158,6 +137,7 @@ function reduce_indices(t::BinarySparseTensor{Tv,Ti}, reds::Vector{Vector{LT}}) 
 end
 
 function copy_indices(t::BinarySparseTensor{Tv,Ti}, targets::Vector{Vector{LT}}) where {Tv,Ti,LT}
+    isempty(targets) && return t
     inds = Ti[]
     vals = Tv[]
     nbits = sum(length, targets)
@@ -168,7 +148,6 @@ function copy_indices(t::BinarySparseTensor{Tv,Ti}, targets::Vector{Vector{LT}})
         push!(vals, val)
     end
     order = sortperm(inds)
-    @show nbits
     return BinarySparseTensor(SparseVector(1<<nbits, inds[order], vals[order]))
 end
 

@@ -91,6 +91,7 @@ function Base.permutedims!(dest::BinarySparseTensor{Tv,Ti,N}, src::BinarySparseT
 end
 
 function Base.permutedims(src::BinarySparseTensor{Tv,Ti,N}, dims) where {Tv,Ti,N}
+    issorted(dims) && return src
     dest = copy(src)
     Base.permutedims!(dest, src, (dims...,))
 end
