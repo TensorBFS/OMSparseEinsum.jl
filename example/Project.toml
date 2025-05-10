@@ -1,0 +1,3 @@
+[deps]
+GenericTensorNetworks = "3521c873-ad32-4bb4-b63d-f4f178f42b49"
+SparseTN = "fecd5469-1712-4901-ad7a-bda207dba756"
