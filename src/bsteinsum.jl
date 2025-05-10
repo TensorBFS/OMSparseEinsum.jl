@@ -25,14 +25,14 @@ function cleanup_dangling_nlegs(ixs::Vector{Vector{LT}}, xs, iy::Vector{LT}) whe
     return newixs, newxs, newiy
 end
 
-function cleanup_dumplicated_legs(ixs::Vector{Vector{LT}}, xs, iy::Vector{LT}) where LT
+function cleanup_duplicated_legs(ixs::Vector{Vector{LT}}, xs, iy::Vector{LT}) where LT
     newxs = Any[xs...]
     newixs = collect(ixs)
     for i in 1:length(xs)
         ix = ixs[i]
         if !allunique(ix)
             newix = unique(ix)
-            newxs[i] = impl_reduction(ix, newix, xs[i], OMEinsum.get_size_dict([ix], (xs[i],)))
+            newxs[i] = reduce_indices(xs[i], _get_reductions(ix, newix))
             newixs[i] = newix
         end
     end
@@ -47,75 +47,42 @@ for ET in [:StaticEinCode, :DynamicEinCode]
     @eval function OMEinsum.einsum(code::$ET, xs::NTuple{NT, BinarySparseTensor}, size_dict::Dict) where {NT}
         ixs, iy = OMEinsum.getixsv(code), OMEinsum.getiyv(code)
         if length(ixs) == 1   # unary operations
-            ix, x = ixs[1], xs[1]
-            return einsum_unary(ix, iy, x, size_dict)
+            return einsum_unary(ixs[1], iy, xs[1])
         end
-        # dangling legs or multi-legs
-        ycode = empty(iy)
+        # clean up dangling legs or multi-legs
         newixs, newxs, newiy = cleanup_dangling_nlegs(ixs, xs, iy)
-        @show newixs, newiy
-        newiy!=iy && pushfirst!(ycode, EinCode((newiy,), iy))
-        newixs, newxs, newnewiy = cleanup_dumplicated_legs(newixs, newxs, newiy)
-        newiy!=newnewiy && pushfirst!(ycode, EinCode((newnewiy,), newiy))
-        @show ycode
-        #newixs == ixs && newnewiy == iy && throw(ArgumentError("Einsum not implemented for $code"))
+        newixs, newxs, newnewiy = cleanup_duplicated_legs(newixs, newxs, newiy)
+
         # dangling merge multi-legs to one leg
         res = einsum(EinCode(newixs, newnewiy), (newxs...,), size_dict)
-        for code in ycode
-            # TODO: broadcast and duplicate
-            res = einsum(code, (res,), size_dict)
-        end
-        return res
+
+        # Duplicate (or diag)
+        return einsum(EinCode(newnewiy, iy), (res,), size_dict)
     end
 end
 
-function einsum_unary(ix, iy, x, size_dict)
-    Nx = length(ix)
-    Ny = length(iy)
-    trace_dims = _get_ptraces(ix, iy)
-    !isempty(trace_dims) && return impl_ptrace(ix, iy, x, trace_dims, size_dict)
-
-    reduce_dims = _get_reductions(ix, iy)
-    !isempty(reduce_dims) && return impl_reduction(ix, iy, x, reduce_dims, size_dict)
-
-    if allunique(iy)
-        @info iy
-        if ix == iy
-            return x
-        elseif allunique(ix)
-            if Nx == Ny
-                if all(i -> i in iy, ix)
-                    return impl_permutedims(ix, iy, x, size_dict)
-                else  # e.g. (abcd->bcde)
-                    throw(ArgumentError("Einsum not implemented for $ix -> $iy"))
-                end
-            else
-                if all(i -> i in ix, iy)
-                    return impl_sum(ix, iy, x, size_dict)
-                elseif all(i -> i in iy, ix)  # e.g. ij->ijk
-                    return impl_repeat(ix, iy, x, size_dict)
-                else  # e.g. ijkxc,ijkl
-                    throw(ArgumentError("Einsum not implemented for $ix -> $iy"))
-                end
-            end
-        else  # ix is not unique
-            if all(i -> i in ix, iy) && all(i -> i in iy, ix)   # ijjj->ij
-                return impl_reduction(ix, iy, x, size_dict)
-            else
-                throw(ArgumentError("Einsum not implemented for $ix -> $iy"))
-            end
-        end
-    else  # iy is not unique
-        if allunique(ix) && all(x->x∈iy, ix)
-            if all(y->y∈ix, iy)  # e.g. ij->ijjj
-                return impl_repeat(ix, iy, x, size_dict)
-            else  # e.g. ij->ijjl
-                throw(ArgumentError("Einsum not implemented for $ix -> $iy"))
-            end
-        else
-            throw(ArgumentError("Einsum not implemented for $ix -> $iy"))
-        end
+function einsum_unary(ix, iy, x)
+    if !allunique(iy) || !isempty(setdiff(iy, ix))
+        throw(ArgumentError("Einsum not implemented for unary operation with non-unique, or new output indices: $ix -> $iy"))
     end
+
+    # Remove dimensions that can be traced out
+    trace_dims = _get_ptraces(ix, iy)
+    if !isempty(trace_dims)
+        x = trace_indices(x; dims=trace_dims)
+        ix = filter(ix->ix ∈ iy, [ix...])
+    end
+
+    # Reduce duplicated indices
+    reduce_dims = _get_reductions(ix, iy)
+    if !isempty(reduce_dims)
+        x = reduce_indices(x, reduce_dims)
+        ix = unique(ix)
+    end
+
+    # Permute to the wanted order
+    perm = map(item -> findfirst(==(item), ix), iy)
+    return permutedims(x, perm)
 end
 
 function _get_reductions(ix::Vector{LT}, iy::Vector{LT}) where LT
@@ -129,31 +96,14 @@ end
 function _get_ptraces(ix::Vector{LT}, iy::Vector{LT}) where LT
     reds = Vector{Int}[]
     for l in unique(ix)
-        l ∉ iy && count(==(l), ix) > 1 && push!(reds, findall(==(l), ix))
+        l ∉ iy && push!(reds, findall(==(l), ix))
     end
     return reds
-end
-
-function impl_reduction(ix::Vector{LT}, iy::Vector{LT}, x::BinarySparseTensor, dims, size_dict) where LT
-    @debug "Reduction" ix => iy size(x)
-    reduce_indices(x, dims)  
 end
 
 function impl_copy(ix::Vector{LT}, iy::Vector{LT}, x::BinarySparseTensor, size_dict) where LT
     @debug "Copy" ix => iy size(x)
     copy_indices(x, map(l->(findall(==(l), iy)...,), ix))
-end
-
-function impl_broadcast(ix::Vector{LT}, iy::Vector{LT}, x::BinarySparseTensor, size_dict) where LT
-    @debug "Broadcast" ix => iy size(x)
-    throw(ArgumentError("Not implemented"))
-end
-
-function impl_ptrace(ix::Vector{LT}, iy::Vector{LT}, x::BinarySparseTensor, dims, size_dict) where LT
-    @debug "Ptrace" ix => iy size(x) newix
-    res = trace_indices(x; dims)
-    newix = filter(ix->ix ∈ iy, [ix...])
-    return einsum(EinCode([newix], iy), (res,), size_dict)
 end
 
 function impl_sum(ix::Vector{LT}, iy::Vector{LT}, x::BinarySparseTensor, size_dict) where LT

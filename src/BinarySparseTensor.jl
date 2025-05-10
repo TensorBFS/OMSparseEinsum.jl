@@ -90,10 +90,9 @@ function Base.permutedims!(dest::BinarySparseTensor{Tv,Ti,N}, src::BinarySparseT
     return dest
 end
 
-Base.permutedims!(dest::BinarySparseTensor{Tv,Ti,N}, src::BinarySparseTensor{Tv,Ti,N}, dims) where {Tv,Ti,N} = permutedims!(dest, src, (dims...,))
 function Base.permutedims(src::BinarySparseTensor{Tv,Ti,N}, dims) where {Tv,Ti,N}
     dest = copy(src)
-    Base.permutedims!(dest, src, dims)
+    Base.permutedims!(dest, src, (dims...,))
 end
 
 function bstrand(ndim::Int, density::Real)
