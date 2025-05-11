@@ -4,7 +4,7 @@ using Test
 
 @testset "constructor" begin
     sv = SparseVector([1,0,0,1,1,0,0,0])
-    t = bst(sv)
+    t = BinarySparseTensor(sv)
     @test [t[i] for i in 1:8] == [1,0,0,1,1,0,0,0]
     @test ndims(t) == 3
     @test size(t) == (2,2,2)
@@ -32,8 +32,8 @@ using Test
     t[bit"001"] = 8
     @test t[bit"001"] == 8
     sv = SparseVector([1,0,0,1,1,0,0,0,1])
-    @test findnz(t) == ([1, 2, 4, 5], [1,8,1,1])
-    @test_throws ArgumentError bst(sv)
+    @test sort.(collect.(findnz(t))) == ([1, 2, 4, 5], [1,1,1,8])
+    @test_throws ArgumentError BinarySparseTensor(sv)
 
     println(t)
     @test zero(t) == zeros(size(t))

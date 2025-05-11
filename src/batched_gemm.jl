@@ -51,8 +51,11 @@ function sparse_contract!(out::BinarySparseTensor, ni::Int, nb::Int, a::BinarySp
     outermaskb = bmask(1:nob)
     batchmask = bmask(1:nb)
 
-    ia, va = copy.(findnz(a))
-    ib, vb = copy.(findnz(b))
+    _ia, _va = findnz(a)  # TODO: check if needs copy
+    _ib, _vb = findnz(b)
+    ia, va, ib, vb = collect(_ia), collect(_va), collect(_ib), collect(_vb)
+    ordera = sortperm(ia; lt=(x, y) -> x < y); ia, va = ia[ordera], va[ordera]
+    orderb = sortperm(ib; lt=(x, y) -> x < y); ib, vb = ib[orderb], vb[orderb]
     chasing_game(M, N, ni, nb, ia, ib) do la, lb
         inda, vala = (ia[la] - 1), va[la]
         indb, valb = (ib[lb] - 1), vb[lb]

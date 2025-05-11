@@ -48,12 +48,11 @@ end
     @test perms == ([1, 2, 3, 4, 5], [1, 2, 3, 4, 5], (1, 2, 3, 4, 5), 2, 1)
 
     sv = SparseVector([1.0,0,0,1,1,0,0,0])
-    t1 = bst(sv)
-    t2 = bst(sv)
+    t1 = BinarySparseTensor(sv)
+    t2 = BinarySparseTensor(sv)
     T1 = Array(t1)
     T2 = Array(t2)
     @test ein"ijk,jkl->il"(t1,t2) ≈ ein"ijk,jkl->il"(T1,T2)
-    @test SparseTN.is_healthy(t1)
 
     ta = bstrand(2, 0.5)
     tb = bstrand(2, 0.5)
@@ -78,6 +77,7 @@ end
     TA = Array(ta)
     res = SparseTN.dropsum(ta, dims=(2,4))
     @test res isa BinarySparseTensor
+    @test ndims(res) == 5
     @test Array(res) ≈ SparseTN.dropsum(TA, dims=(2,4))
     @test SparseTN.dropsum(ta) ≈ SparseTN.dropsum(TA)
     @test sum(ta) ≈ sum(TA)
@@ -160,8 +160,8 @@ end
 
 @testset "binary with copy indices" begin
     sv = SparseVector([1.0,0,0,1,1,0,0,0])
-    t1 = bst(sv)
-    t2 = bst(sv)
+    t1 = BinarySparseTensor(sv)
+    t2 = BinarySparseTensor(sv)
     T1 = Array(t1)
     T2 = Array(t2)
     @test ein"ijk,jkl->ill"(t1,t2) ≈ ein"ijk,jkl->ill"(T1,T2)
