@@ -1,7 +1,8 @@
 # binary sparse tensor
 struct BinarySparseTensor{Tv,Ti<:Integer,N} <: AbstractSparseArray{Tv, Ti, N}
-   data:: SparseVector{Tv, Ti}
+   data:: SparseVector{Tv, Ti}  # indices must be sorted!
 end
+is_healthy(t::BinarySparseTensor) = issorted(t.data.nzind)
 
 function bst(data::SparseVector{T,Ti}) where {T,Ti}
     N = log2dim1(data)
@@ -12,16 +13,33 @@ end
 function BinarySparseTensor(A::AbstractArray)
     bst(SparseVector(vec(A)))
 end
-Base.getindex(t::BinarySparseTensor{T,Ti,N}, index::BitStr{N,Ti}) where {T,Ti,N} = @inbounds t.data[buffer(index)+1]
-Base.getindex(t::BinarySparseTensor, index::Int...) = t.data[index]
+function Base.getindex(t::BinarySparseTensor{T,Ti,N}, index::BitStr{N}) where {T,Ti,N}
+    @boundscheck as_index(index) <= length(t.data) || throw(BoundsError(t, index))
+    @inbounds return t.data[as_index(index)]
+end
+Base.getindex(t::BinarySparseTensor, index::Int...) = t.data[as_index(index)]
+as_index(x::Integer) = x
+as_index(x::BitStr) = buffer(x)+1
+@inline function as_index(x::NTuple{N,<:Integer}) where N
+    res = 1
+    for i=1:N
+        @inbounds res += (x[i]-1)<<(i-1)
+    end
+    return res
+end
+
 function Base.size(t::BinarySparseTensor{T,Ti,N}, i::Int) where {T,Ti,N}
     @boundscheck i<=0 && throw(BoundsError(size(t), i))
     i<=N ? 2 : 1
 end
 Base.size(t::BinarySparseTensor{T,Ti,N}) where {T,Ti,N} = ntuple(i->2, N)
 
-function Base.setindex!(t::BinarySparseTensor{T,Ti,N}, val, index::Ti) where {T,Ti,N}
-    @inbounds t.data[index] = val
+function Base.setindex!(t::BinarySparseTensor{T,Ti,N}, val, index::BitStr{N,Ti}) where {T,Ti,N}
+    return t.data[as_index(index)] = val
+end
+function Base.setindex!(t::BinarySparseTensor{T,Ti,N}, val, index::Integer) where {T, Ti, N}
+    @boundscheck one(Ti) <= index <= one(Ti)<<N || throw(BoundsError(t, index))
+    return @inbounds t.data[as_index(index)] = val
 end
 
 SparseArrays.nnz(t::BinarySparseTensor) = nnz(t.data)
@@ -40,7 +58,7 @@ function Base.show(io::IO, t::BinarySparseTensor{T,Ti,N}) where {T,Ti,N}
     NNZ = length(t.data.nzind)
     println(io, "$(summary(t)) with $(nnz(t)) stored entries:")
     for (i, (nzi, nzv)) in enumerate(zip(findnz(t)...))
-        print(io, "  $nzi = $nzv")
+        print(io, "  $(BitStr{N}(nzi - 1)) = $nzv")
         i != NNZ && println(io)
     end
 end
@@ -56,11 +74,10 @@ function bstrand(ndim::Int, density::Real)
 end
 
 function Base.permutedims!(dest::BinarySparseTensor{Tv,Ti,N}, src::BinarySparseTensor{Tv,Ti,N}, dims::NTuple{N,Int}) where {Tv,Ti,N}
-    nzind, nzval = findnz(src)
-    nzind .= bpermute.(nzind, Ref(dims))
-    order = sortperm(nzind)
-    @inbounds dest.data.nzind .= buffer.(nzind[order]) .+ 1
-    @inbounds dest.data.nzval .= nzval[order]
+    dest.data.nzind .= bpermute.(src.data.nzind .- 1, Ref(dims)) .+ 1
+    order = sortperm(dest.data.nzind)
+    @inbounds dest.data.nzind .= dest.data.nzind[order]
+    @inbounds dest.data.nzval .= getindex.(Ref(src.data.nzval), order)
     return dest
 end
 # permute bits in an integer
@@ -85,5 +102,5 @@ end
 function Base.permutedims(src::BinarySparseTensor{Tv,Ti,N}, dims) where {Tv,Ti,N}
     issorted(dims) && return src
     dest = copy(src)
-    Base.permutedims!(dest, src, (dims...,))
+    return Base.permutedims!(dest, src, (dims...,))
 end

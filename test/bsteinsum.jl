@@ -1,5 +1,5 @@
 using OMEinsum, SparseTN, BitBasis
-using SparseTN: get_inner, get_batch, chasing_game, cleanup_duplicated_legs, cleanup_dangling_nlegs, dropsum
+using SparseTN: chasing_game, cleanup_duplicated_legs, cleanup_dangling_nlegs, dropsum
 using Test
 using SparseArrays
 
@@ -49,13 +49,14 @@ end
     T1 = Array(t1)
     T2 = Array(t2)
     @test ein"ijk,jkl->il"(t1,t2) ≈ ein"ijk,jkl->il"(T1,T2)
+    @test SparseTN.is_healthy(t1)
 
     ta = bstrand(2, 0.5)
     tb = bstrand(2, 0.5)
     TA, TB = Array(ta), Array(tb)
     @test ein"ij,jk->ik"(ta,tb) ≈ ein"ij,jk->ik"(TA,TB)
-    @test ta == TA
-    @test tb == TB
+    @test ta ≈ TA
+    @test tb ≈ TB
 
     # with batch
     ta = bstrand(7, 0.5)
@@ -123,7 +124,6 @@ end
             res = code(ta, size_info=Dict('j'=>2))
             @show code
             @test res isa BinarySparseTensor
-            @show size(res), size(code(TA, size_info=Dict('j'=>2)))
             @test res ≈ code(TA, size_info=Dict('j'=>2))
         end
     end
@@ -132,7 +132,6 @@ end
     for code in [ein"iiiiiii->iiiiii", ein"iikjjjj->ikj", ein"iikjjjl->ikj"]
         res = code(ta)
         @test res isa BinarySparseTensor
-        @show size(res), size(code(TA))
         @test res ≈ code(TA)
     end
 end

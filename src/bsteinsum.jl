@@ -63,7 +63,8 @@ for ET in [:StaticEinCode, :DynamicEinCode]
         res = batched_contract(newixs, newnewiy, (newxs...,))
 
         # Duplicate (or diag)
-        return einsum(EinCode([newnewiy], iy), (res,), size_dict)
+        res = einsum(EinCode([newnewiy], iy), (res,), size_dict)
+        return res
     end
 end
 
