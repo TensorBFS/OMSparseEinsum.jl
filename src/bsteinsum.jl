@@ -4,25 +4,39 @@ function cleanup_dangling_nlegs(ixs::Vector{Vector{LT}}, xs, iy::Vector{LT}) whe
     newxs = Any[xs...]
     newixs = [ixs...]
     newiy = iy
-    for i = 1:length(xs)
+    for (i, x) in enumerate(xs)
         ix, dlx = newixs[i], danglegsin[i]
         if !isempty(dlx)
-            newxs[i] = multidropsum(xs[i], dims=[findall(==(l), ix) for l in dlx])
+            newxs[i] = multidropsum(x, dims=[findall(==(l), ix) for l in dlx])
             newixs[i] = filter(l->l∉dlx, [ix...])
         end
     end
     if !isempty(danglegsout)
-        newiy = [l for l in newiy if l ∉ danglegsout]
+        newiy = [l for l in newiy if l ∉ danglegsout]   # TODO: test
     end
     return newixs, newxs, newiy
+end
+
+# return positions of dangling legs.
+function dangling_nleg_labels(ixs, iy, lc)
+    _dnlegs.(ixs, Ref(lc)), _dnlegs(iy, lc)
+end
+function _dnlegs(ix, lc)
+    (unique(filter(iix->count(==(iix), ix)==lc[iix], [ix...]))...,)
+end
+function count_legs(ixs...)
+    lc = Dict{eltype(ixs[1]),Int}()
+    for l in Iterators.flatten(ixs)
+        lc[l] = get(lc, l, 0) + 1
+    end
+    return lc
 end
 
 function cleanup_duplicated_legs(ixs::Vector{Vector{LT}}, xs, iy::Vector{LT}) where LT
     newxs = Any[xs...]
     newixs = collect(ixs)
-    for i in 1:length(xs)
-        ix = ixs[i]
-        if !allunique(ix)
+    for (i, ix) in enumerate(ixs)
+        if !allunique(ix)  # duplicated legs
             newix = unique(ix)
             newxs[i] = reduce_indices(xs[i], _get_reductions(ix, newix))
             newixs[i] = newix

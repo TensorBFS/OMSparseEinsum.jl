@@ -1,5 +1,5 @@
 using OMEinsum, SparseTN, BitBasis
-using SparseTN: get_outer, get_inner, get_inner_and_batch, get_batch, chasing_game
+using SparseTN: get_outer, get_inner, get_inner_and_batch, get_batch, chasing_game, cleanup_duplicated_legs, cleanup_dangling_nlegs, dropsum
 using Test
 using SparseArrays
 
@@ -31,6 +31,27 @@ end
     @test get_outer(Val(2), Val(0), bit"0001111") === bit"01111"
     @test get_outer(Val(2), Val(0), bit"0001111", bit"001") === bit"101111"
     @test get_outer(Val(2), Val(1), bit"0001111", bit"000") === bit"01111"
+end
+
+@testset "clean up tensors" begin
+    ta = bstrand(4, 1.0)
+    tb = bstrand(4, 1.0)
+    ixs = [[3,4,5,6], [1,2,3,4]]
+    iy = [1]
+    newixs, newxs, newiy = SparseTN.cleanup_dangling_nlegs(ixs, [ta, tb], iy)
+    @test newixs == [[3,4], [1,3,4]]
+    @test newxs[1] ≈ dropsum(ta, dims=(3,4))
+    @test newxs[2] ≈ dropsum(tb, dims=(2,))
+    @test newiy == [1]
+
+    # the output has dangling legs
+    ixs = [[3,4,5,6], [1,2,3,4]]
+    iy = [1, 8]
+    newixs, newxs, newiy = SparseTN.cleanup_dangling_nlegs(ixs, [ta, tb], iy)
+    @test newixs == [[3,4], [1,3,4]]
+    @test newxs[1] ≈ dropsum(ta, dims=(3,4))
+    @test newxs[2] ≈ dropsum(tb, dims=(2,))
+    @test newiy == [1]
 end
 
 @testset "sparse contract" begin
@@ -155,10 +176,19 @@ end
 
 @testset "count legs" begin
     @test SparseTN.count_legs((1,2), (2,3), (1,3)) == Dict(1=>2,2=>2,3=>2)
-    @test SparseTN.dangling_nleg_labels(((1,1,2), (2,3)), (5,7)) == (((1,), (3,)), (5,7))
+    @test SparseTN.dangling_nleg_labels(((1,1,2), (2,3)), (5,7), SparseTN.count_legs((1,1,2), (2,3), (5,7))) == (((1,), (3,)), (5,7))
 end
 
 @testset "unsetbit, copybits" begin
     @test SparseTN.unsetbit(bit"111100", bit"001101") == bit"110000"
     @test SparseTN.copybits(0b110, [[1,2], [5,4], [3]]) == 0b11100
+end
+
+@testset "binary with copy indices" begin
+    sv = SparseVector([1.0,0,0,1,1,0,0,0])
+    t1 = bst(sv)
+    t2 = bst(sv)
+    T1 = Array(t1)
+    T2 = Array(t2)
+    @test ein"ijk,jkl->ill"(t1,t2) ≈ ein"ijk,jkl->ill"(T1,T2)
 end

@@ -8,6 +8,7 @@ using Test
     @test size(t) == (2,2,2)
     @test nnz(t) == 3
     t2 = BinarySparseTensor(Array(t))
+    @show t2
     @test t2 == t
     @test nnz(t2) == 3
     @test_throws BoundsError size(t,-1)

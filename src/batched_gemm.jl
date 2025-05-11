@@ -1,4 +1,4 @@
-OMEinsum.asarray(x::Number, arr::BinarySparseTensor) = BinarySparseTensor(OMEinsum.asarray(x, arr.data))
+# OMEinsum.asarray(x::Number, arr::BinarySparseTensor) = BinarySparseTensor(OMEinsum.asarray(x, arr.data))
 
 function OMEinsum.get_output_array(xs::NTuple{N, BinarySparseTensor{Tv,Ti,M} where {Tv,M}}, size, fillzero::Bool) where {N,Ti}
     return bst_zeros(promote_type(map(eltype,xs)...), Ti, length(size))

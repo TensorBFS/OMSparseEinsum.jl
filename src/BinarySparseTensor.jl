@@ -1,28 +1,9 @@
-# BitStr patch
-function Base.sub_with_overflow(x::T, y::T) where T<:BitStr
-    res, sig = Base.sub_with_overflow(buffer(x), buffer(y))
-    return T(res), sig
-end
-
-function Base.add_with_overflow(x::T, y::T) where T<:BitStr
-    res, sig = Base.add_with_overflow(buffer(x), buffer(y))
-    return T(res), sig
-end
-
-function bpermute(b::T, order) where T<:Integer
-    res = zero(b)
-    for i = 1:length(order)
-        @inbounds bi = order[i]
-        res |= (b & bmask(T,bi)) >> (bi-i)
-    end
-    return res
-end
-
+# binary sparse tensor
 struct BinarySparseTensor{Tv,Ti<:Integer,N} <: AbstractSparseArray{Tv, Ti, N}
    data:: SparseVector{Tv, Ti}
 end
 
-as_index(x::Integer) = x
+# as_index(x::Integer) = x
 as_index(x::BitStr) = buffer(x)+1
 @inline function as_index(x::NTuple{N,<:Integer}) where N
     res = 1
@@ -44,10 +25,10 @@ end
 Base.getindex(t::BinarySparseTensor{T,Ti,N}, index::BitStr{N,Ti}) where {T,Ti,N} = @inbounds t.data[as_index(index)]
 Base.getindex(t::BinarySparseTensor, index::Int...) = t.data[as_index(index)]
 function Base.size(t::BinarySparseTensor{T,Ti,N}, i::Int) where {T,Ti,N}
-    i<=0 && throw(BoundsError(size(t), i))
+    @boundscheck i<=0 && throw(BoundsError(size(t), i))
     i<=N ? 2 : 1
 end
-Base.size(t::BinarySparseTensor{T,Ti,N}) where {T,Ti,N} = (fill(2, N)...,)
+Base.size(t::BinarySparseTensor{T,Ti,N}) where {T,Ti,N} = ntuple(i->2, N)
 
 function Base.setindex!(t::BinarySparseTensor{T,Ti,N}, val, index::BitStr{N,Ti}) where {T,Ti,N}
     @inbounds t.data[as_index(index)] = val
@@ -58,8 +39,8 @@ SparseArrays.findnz(t::BinarySparseTensor{Tv,Ti,N}) where {Tv,Ti,N} = findnz(Bit
 function SparseArrays.findnz(::Type{T}, t::BinarySparseTensor) where T
     convert.(T, t.data.nzind.-1), t.data.nzval
 end
-SparseArrays.nonzeroinds(t::BinarySparseTensor{Tv,Ti,N}) where {Tv, Ti, N} = convert.(BitStr{N,Ti}, t.data.nzind.-1)
-SparseArrays.nonzeros(t::BinarySparseTensor{Tv,Ti,N}) where {Tv, Ti, N} = t.data.nzval
+# SparseArrays.nonzeroinds(t::BinarySparseTensor{Tv,Ti,N}) where {Tv, Ti, N} = convert.(BitStr{N,Ti}, t.data.nzind.-1)
+# SparseArrays.nonzeros(t::BinarySparseTensor{Tv,Ti,N}) where {Tv, Ti, N} = t.data.nzval
 Base.Array(t::BinarySparseTensor{Tv,Ti,1}) where {Tv,Ti} = Base.Array(t.data)
 
 Base.show(io::IO, ::MIME"text/plain", t::BinarySparseTensor) = Base.show(io, t)
@@ -81,6 +62,10 @@ bst_zeros(::Type{Tv}, N::Int) where {Tv} = bst_zeros(Tv, Int64, N)
 Base.zero(t::BinarySparseTensor) = bst(SparseVector(t.data.n, t.data.nzind, zero(t.data.nzval)))
 Base.copy(t::BinarySparseTensor) = bst(SparseVector(t.data.n, copy(t.data.nzind), copy(t.data.nzval)))
 
+function bstrand(ndim::Int, density::Real)
+    bst(sprand(1<<ndim, density))
+end
+
 function Base.permutedims!(dest::BinarySparseTensor{Tv,Ti,N}, src::BinarySparseTensor{Tv,Ti,N}, dims::NTuple{N,Int}) where {Tv,Ti,N}
     nzind, nzval = findnz(src)
     nzind .= bpermute.(nzind, Ref(dims))
@@ -89,13 +74,27 @@ function Base.permutedims!(dest::BinarySparseTensor{Tv,Ti,N}, src::BinarySparseT
     @inbounds dest.data.nzval .= nzval[order]
     return dest
 end
+# permute bits in an integer
+function bpermute(b::T, order) where T<:Integer
+    res = zero(b)
+    for (i, bi) in enumerate(order)
+        res |= (b & bmask(T,bi)) >> (bi-i)
+    end
+    return res
+end
+
+# the following two functions are used in sortperm function.
+function Base.sub_with_overflow(x::T, y::T) where T<:BitStr
+    res, sig = Base.sub_with_overflow(buffer(x), buffer(y))
+    return T(res), sig
+end
+function Base.add_with_overflow(x::T, y::T) where T<:BitStr
+    res, sig = Base.add_with_overflow(buffer(x), buffer(y))
+    return T(res), sig
+end
 
 function Base.permutedims(src::BinarySparseTensor{Tv,Ti,N}, dims) where {Tv,Ti,N}
     issorted(dims) && return src
     dest = copy(src)
     Base.permutedims!(dest, src, (dims...,))
-end
-
-function bstrand(ndim::Int, density::Real)
-    bst(sprand(1<<ndim, density))
 end
