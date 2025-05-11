@@ -1,22 +1,3 @@
-# can be used in either static or dynamic invoke
-function analyse_batched_perm(iAs, iBs, iOuts)
-    iABs = iAs ∩ iBs
-    pres   = iABs ∩ iOuts
-    broad  = setdiff((iAs ∩ iOuts) ∪ (iBs ∩ iOuts), pres)
-    summed = setdiff(iABs, pres)
-
-    iAps, iAbs, iAss = pres ∩ iAs, broad ∩ iAs, summed ∩ iAs
-    iBps, iBbs, iBss = pres ∩ iBs, broad ∩ iBs, summed ∩ iBs
-
-    pA   = indexpos.(Ref(iAs), vcat(iAbs, iAps, iAss))
-    pB   = indexpos.(Ref(iBs), vcat(iBbs, iBps, iBss))
-    iABs = vcat(iAbs, iBbs, iAps)
-    pOut = indexpos.(Ref(iABs), iOuts)
-
-    return pA, pB, pOut, length(iAss), length(iAps)
-end
-indexpos(ix, item) = findfirst(==(item), ix)
-
 ############ BitBasis
 @generated function ibcat(bits::NTuple{N, BitStr{M,T} where M}) where {N,T}
     total_bits = sum_length(bits.parameters...)
@@ -42,14 +23,6 @@ end
 """
 return positions of dangling legs.
 """
-function dangling_legs(ixs, iy, lc=count_legs(ixs..., iy))
-    _dlegs.(ixs, Ref(lc)), _dlegs(iy, lc)
-end
-_dlegs(ix, lc) = (findall(iix->lc[iix] == 1, [ix...])...,)
-
-"""
-return positions of dangling legs.
-"""
 function dangling_nleg_labels(ixs, iy, lc=count_legs(ixs..., iy))
     _dnlegs.(ixs, Ref(lc)), _dnlegs(iy, lc)
 end
@@ -62,10 +35,6 @@ function dumplicated_legs(ix)
     findall(l->count(==(l), ix)>1, labels)
 end
 
-# function getalllabels(code::EinCode{ixs, iy}) where {ixs, iy}
-#     reduce(∪, (ixs..., iy))
-# end
-
 function allin(x, y)
-    all(xi->xi in y, x)
+    all(xi->xi ∈ y, x)
 end

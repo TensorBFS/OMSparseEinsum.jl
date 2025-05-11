@@ -8,8 +8,11 @@ function mis3_network(n::Int)
     return net
 end
 
-net = mis3_network(10)
+using Random; Random.seed!(42)
+net = mis3_network(106)
 dense = GenericTensorNetworks.generate_tensors(1.0, net)
 tensors = map(t -> BinarySparseTensor(t), dense)
-net.code(dense...)
-net.code(tensors...)
+@time net.code(dense...)
+
+# 5.88 -> 4.18
+@time net.code(tensors...)

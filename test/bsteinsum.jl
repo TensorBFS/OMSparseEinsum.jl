@@ -155,7 +155,6 @@ end
 
 @testset "count legs" begin
     @test SparseTN.count_legs((1,2), (2,3), (1,3)) == Dict(1=>2,2=>2,3=>2)
-    @test SparseTN.dangling_legs(((1,1,2), (2,3)), (5,7)) == (((), (2,)), (1,2))
     @test SparseTN.dangling_nleg_labels(((1,1,2), (2,3)), (5,7)) == (((1,), (3,)), (5,7))
 end
 

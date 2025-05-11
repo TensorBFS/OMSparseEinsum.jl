@@ -90,7 +90,21 @@ function batched_contract(ixs, iy, xs::NTuple{NT, BinarySparseTensor}) where {NT
     permutedims(out, pout)
 end
 
-function matmul(code::EinCode, xs::NTuple{NT, BinarySparseTensor}, size_dict) where {NT}
-    ixs, iy = OMEinsum.getixsv(code), OMEinsum.getiyv(code)
-    einsum(OMEinsum.BatchedContract(), code, xs, size_dict)
+# can be used in either static or dynamic invoke
+function analyse_batched_perm(iAs, iBs, iOuts)
+    iABs = iAs ∩ iBs
+    pres   = iABs ∩ iOuts
+    broad  = setdiff((iAs ∩ iOuts) ∪ (iBs ∩ iOuts), pres)
+    summed = setdiff(iABs, pres)
+
+    iAps, iAbs, iAss = pres ∩ iAs, broad ∩ iAs, summed ∩ iAs
+    iBps, iBbs, iBss = pres ∩ iBs, broad ∩ iBs, summed ∩ iBs
+
+    pA   = indexpos.(Ref(iAs), vcat(iAbs, iAps, iAss))
+    pB   = indexpos.(Ref(iBs), vcat(iBbs, iBps, iBss))
+    iABs = vcat(iAbs, iBbs, iAps)
+    pOut = indexpos.(Ref(iABs), iOuts)
+
+    return pA, pB, pOut, length(iAss), length(iAps)
 end
+indexpos(ix, item) = findfirst(==(item), ix)
