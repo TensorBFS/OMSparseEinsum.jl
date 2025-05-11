@@ -45,7 +45,7 @@ function chasing_game(g, dima::Int, dimb::Int, ni::Int, nb::Int, inda, indb)
 end
 
 # indice are sorted: (inner, batch, outer)
-function sparse_contract(ni::Int, nb::Int, a::BinarySparseTensor{T1,Ti,M}, b::BinarySparseTensor{T2,Ti,N}) where {T1,T2,N,M,Ti}
+function sparse_contract!(out::BinarySparseTensor, ni::Int, nb::Int, a::BinarySparseTensor{T1,Ti,M}, b::BinarySparseTensor{T2,Ti,N}) where {T1,T2,N,M,Ti}
     noa, nob = M-ni-nb, N-ni-nb
     outermaska = bmask(1:noa)
     outermaskb = bmask(1:nob)
@@ -54,7 +54,6 @@ function sparse_contract(ni::Int, nb::Int, a::BinarySparseTensor{T1,Ti,M}, b::Bi
 
     ia, va = copy.(findnz(a))
     ib, vb = copy.(findnz(b))
-    out = OMEinsum.get_output_array((a,b), (fill(2, dimc)...,), true)
     chasing_game(M, N, ni, nb, ia, ib) do la, lb
         inda, vala = (ia[la] - 1), va[la]
         indb, valb = (ib[lb] - 1), vb[lb]
@@ -68,11 +67,11 @@ end
 function batched_contract(ixs, iy, xs::NTuple{NT, BinarySparseTensor}) where {NT}
     a, b = xs
     pa, pb, pout, Ni, Nb = analyse_batched_perm(ixs..., iy)
-    A = copy(a)
-    B = copy(b)
     a = permutedims(a, pa)
     b = permutedims(b, pb)
-    out = sparse_contract(Ni, Nb, a, b)
+
+    out = OMEinsum.get_output_array(xs, (fill(2, ndims(a)+ndims(b)-2Ni-Nb)...,), true)
+    sparse_contract!(out, Ni, Nb, a, b)
     permutedims(out, pout)
 end
 

@@ -16,5 +16,5 @@ tensors = map(t -> BinarySparseTensor(t), dense)
 # 4.66 -> 0.27
 @time net.code(dense...)
 
-# 5.88 -> 4.18
+# 30s
 @time net.code(tensors...)

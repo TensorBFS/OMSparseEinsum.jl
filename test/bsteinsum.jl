@@ -1,5 +1,5 @@
 using OMEinsum, SparseTN, BitBasis
-using SparseTN: chasing_game, cleanup_duplicated_legs, cleanup_dangling_nlegs, dropsum
+using SparseTN: chasing_game, cleanup_duplicated_legs, cleanup_dangling_nlegs, dropsum, sparse_contract!
 using Test
 using SparseArrays
 
@@ -28,15 +28,19 @@ end
     ta = bstrand(4, 0.5)
     tb = bstrand(4, 0.5)
     TA, TB = Array(ta), Array(tb)
-    @test sum(sparse_contract(2, 0, ta, tb)) ≈ sum(ein"lkji,nmji->lknm"(TA, TB))
-    @test sparse_contract(2, 0, ta, tb) ≈ ein"lkji,nmji->lknm"(TA, TB)
+    out = OMEinsum.get_output_array((ta,tb), (fill(2, 4)...,), true)
+    @test sum(sparse_contract!(out, 2, 0, ta, tb)) ≈ sum(ein"lkji,nmji->lknm"(TA, TB))
+    out = OMEinsum.get_output_array((ta,tb), (fill(2, 4)...,), true)
+    @test sparse_contract!(out, 2, 0, ta, tb) ≈ ein"lkji,nmji->lknm"(TA, TB)
 
     # batched
     ta = bstrand(5, 0.5)
     tb = bstrand(5, 0.5)
     TA, TB = Array(ta), Array(tb)
-    @test sum(Array(sparse_contract(2, 1, ta, tb))) ≈ sum(ein"lkbji,nmbji->lknmb"(TA, TB))
-    @test Array(sparse_contract(2, 1, ta, tb)) ≈ ein"lkbji,nmbji->lknmb"(TA, TB)
+    out = OMEinsum.get_output_array((ta,tb), (fill(2, 5)...,), true)
+    @test sum(Array(sparse_contract!(out, 2, 1, ta, tb))) ≈ sum(ein"lkbji,nmbji->lknmb"(TA, TB))
+    out = OMEinsum.get_output_array((ta,tb), (fill(2, 5)...,), true)
+    @test Array(sparse_contract!(out, 2, 1, ta, tb)) ≈ ein"lkbji,nmbji->lknmb"(TA, TB)
 end
 
 @testset "einsum batched contract" begin
