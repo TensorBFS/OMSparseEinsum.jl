@@ -50,7 +50,6 @@ function sparse_contract!(out::BinarySparseTensor, ni::Int, nb::Int, a::BinarySp
     outermaska = bmask(1:noa)
     outermaskb = bmask(1:nob)
     batchmask = bmask(1:nb)
-    dimc = noa + nob + nb
 
     ia, va = copy.(findnz(a))
     ib, vb = copy.(findnz(b))

@@ -5,25 +5,33 @@ end
 is_healthy(t::BinarySparseTensor) = issorted(t.data.nzind)
 
 function bst(data::SparseVector{T,Ti}) where {T,Ti}
-    N = log2dim1(data)
-    length(data) != 1<<N && throw(ArgumentError("data length should be 2^x, got $(length(data))"))
+    N = log2i(length(data))
+    @show N
+    @show length(data)
+    @show one(Ti) << N
+    length(data) != one(Ti) << N && throw(ArgumentError("data length should be 2^x, got $(length(data))"))
     BinarySparseTensor{T,Ti,N}(data)
 end
 
 function BinarySparseTensor(A::AbstractArray)
     bst(SparseVector(vec(A)))
 end
-function Base.getindex(t::BinarySparseTensor{T,Ti,N}, index::BitStr{N}) where {T,Ti,N}
-    @boundscheck as_index(index) <= length(t.data) || throw(BoundsError(t, index))
-    @inbounds return t.data[as_index(index)]
+function BinarySparseTensor{Tv, Ti}(A::AbstractArray) where {Tv, Ti}
+    sv = SparseVector(vec(A))
+    BinarySparseTensor(SparseVector{Tv, Ti}(Ti(length(A)), Ti.(sv.nzind), sv.nzval))
 end
-Base.getindex(t::BinarySparseTensor, index::Int...) = t.data[as_index(index)]
-as_index(x::Integer) = x
-as_index(x::BitStr) = buffer(x)+1
-@inline function as_index(x::NTuple{N,<:Integer}) where N
-    res = 1
+
+function Base.getindex(t::BinarySparseTensor{T,Ti,N}, index::BitStr{N}) where {T,Ti,N}
+    @boundscheck as_index(Ti, index) <= length(t.data) || throw(BoundsError(t, index))
+    @inbounds return t.data[as_index(Ti, index)]
+end
+Base.getindex(t::BinarySparseTensor{T,Ti,N}, index::Int...) where {T,Ti,N} = t.data[as_index(Ti, index)]
+as_index(::Type{Ti}, x::Integer) where {Ti} = Ti(x)
+as_index(::Type{Ti}, x::BitStr) where {Ti} = Ti(buffer(x)+1)
+@inline function as_index(::Type{Ti}, x::NTuple{N,<:Integer}) where {Ti,N}
+    res = one(Ti)
     for i=1:N
-        @inbounds res += (x[i]-1)<<(i-1)
+        @inbounds res += Ti(x[i]-1)<<(i-1)
     end
     return res
 end
@@ -35,11 +43,11 @@ end
 Base.size(t::BinarySparseTensor{T,Ti,N}) where {T,Ti,N} = ntuple(i->2, N)
 
 function Base.setindex!(t::BinarySparseTensor{T,Ti,N}, val, index::BitStr{N,Ti}) where {T,Ti,N}
-    return t.data[as_index(index)] = val
+    return t.data[as_index(Ti, index)] = val
 end
 function Base.setindex!(t::BinarySparseTensor{T,Ti,N}, val, index::Integer) where {T, Ti, N}
     @boundscheck one(Ti) <= index <= one(Ti)<<N || throw(BoundsError(t, index))
-    return @inbounds t.data[as_index(index)] = val
+    return @inbounds t.data[as_index(Ti, index)] = val
 end
 
 SparseArrays.nnz(t::BinarySparseTensor) = nnz(t.data)

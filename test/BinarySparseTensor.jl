@@ -41,6 +41,12 @@ using Test
     t = bst_zeros(Float64, 5)
     @test size(t) == (2,2,2,2,2)
     @test eltype(t) == Float64
+
+    # LongLongUInt
+    t = randn(2, 2)
+    t2 = BinarySparseTensor{Float64, LongLongUInt{5}}(t)
+    @test t1 isa BinarySparseTensor{Float64, LongLongUInt{5}}
+    @test t ≈ t2
 end
 
 @testset "sort and permute" begin
