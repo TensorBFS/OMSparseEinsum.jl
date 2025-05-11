@@ -7,7 +7,6 @@ using OMEinsum
 export bst_zeros, bstrand, BinarySparseTensor, sparse_contract, bst
 
 include("BinarySparseTensor.jl")
-include("patches.jl")
 include("batched_gemm.jl")
 include("bsteinsum.jl")
 

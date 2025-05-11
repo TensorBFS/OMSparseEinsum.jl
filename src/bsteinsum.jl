@@ -149,6 +149,8 @@ function reduce_indices(t::BinarySparseTensor{Tv,Ti}, reds::Vector{Vector{LT}}) 
     order = sortperm(inds)
     return BinarySparseTensor(SparseVector(1<<length(bits), inds[order], vals[order]))
 end
+# masked locations are all 1s or 0s
+allsame(x::T, mask::T) where T<:Integer = allone(x, mask) || !anyone(x, mask)
 
 function copy_indices(t::BinarySparseTensor{Tv,Ti}, targets::Vector{Vector{LT}}) where {Tv,Ti,LT}
     isempty(targets) && return t
