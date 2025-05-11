@@ -45,7 +45,7 @@ using Test
     # LongLongUInt
     t = randn(2, 2)
     t2 = BinarySparseTensor{Float64, LongLongUInt{5}}(t)
-    @test t1 isa BinarySparseTensor{Float64, LongLongUInt{5}}
+    @test t2 isa BinarySparseTensor{Float64, LongLongUInt{5}}
     @test t ≈ t2
 end
 

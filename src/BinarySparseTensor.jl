@@ -6,9 +6,6 @@ is_healthy(t::BinarySparseTensor) = issorted(t.data.nzind)
 
 function bst(data::SparseVector{T,Ti}) where {T,Ti}
     N = log2i(length(data))
-    @show N
-    @show length(data)
-    @show one(Ti) << N
     length(data) != one(Ti) << N && throw(ArgumentError("data length should be 2^x, got $(length(data))"))
     BinarySparseTensor{T,Ti,N}(data)
 end
@@ -22,10 +19,15 @@ function BinarySparseTensor{Tv, Ti}(A::AbstractArray) where {Tv, Ti}
 end
 
 function Base.getindex(t::BinarySparseTensor{T,Ti,N}, index::BitStr{N}) where {T,Ti,N}
-    @boundscheck as_index(Ti, index) <= length(t.data) || throw(BoundsError(t, index))
-    @inbounds return t.data[as_index(Ti, index)]
+    idx = as_index(Ti, index)
+    @boundscheck idx <= length(t.data) || throw(BoundsError(t, index))
+    @inbounds return t.data[idx]
 end
-Base.getindex(t::BinarySparseTensor{T,Ti,N}, index::Int...) where {T,Ti,N} = t.data[as_index(Ti, index)]
+function Base.getindex(t::BinarySparseTensor{T,Ti,N}, index::Int...) where {T,Ti,N}
+    idx =as_index(Ti, index)
+    @boundscheck idx <= length(t.data) || throw(BoundsError(t, index))
+    @inbounds return t.data[idx]
+end
 as_index(::Type{Ti}, x::Integer) where {Ti} = Ti(x)
 as_index(::Type{Ti}, x::BitStr) where {Ti} = Ti(buffer(x)+1)
 @inline function as_index(::Type{Ti}, x::NTuple{N,<:Integer}) where {Ti,N}
