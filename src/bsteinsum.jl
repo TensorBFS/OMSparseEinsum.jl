@@ -12,7 +12,7 @@ function cleanup_dangling_nlegs(ixs::Vector{Vector{LT}}, xs, iy::Vector{LT}) whe
         end
     end
     if !isempty(danglegsout)
-        newiy = [l for l in newiy if l ∉ danglegsout]   # TODO: test
+        newiy = [l for l in newiy if l ∉ danglegsout]
     end
     return newixs, newxs, newiy
 end
