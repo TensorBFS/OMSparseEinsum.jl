@@ -1,4 +1,5 @@
 using BitBasis, SparseArrays, SparseTN
+using SparseTN: bpermute
 using Test
 
 @testset "constructor" begin

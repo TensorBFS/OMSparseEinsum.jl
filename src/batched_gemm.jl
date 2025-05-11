@@ -4,31 +4,34 @@ function OMEinsum.get_output_array(xs::NTuple{N, BinarySparseTensor{Tv,Ti,M} whe
     return bst_zeros(promote_type(map(eltype,xs)...), Ti, length(size))
 end
 
-function chasing_game(g, f, xs::NTuple{2,Vector})
-    xa, xb = xs
+# a method to compute the batched gemm of two sparse tensors
+# innerbatch: a function that returns the inner and batch indices
+# g: a function that operates on the indices
+# inda, indb: the nonzero indices of the two tensors, assumed to have sorted inner and batch indices
+function chasing_game(g, innerbatch, inda, indb)
     la, lb = 1, 1
-    while lb <= length(xb) && la <= length(xa)
-        @inbounds fa = f(xa[la])
-        @inbounds fb = f(xb[lb])
+    while lb <= length(indb) && la <= length(inda)
+        @inbounds fa = innerbatch(inda[la])
+        @inbounds fb = innerbatch(indb[lb])
         @inbounds while fa != fb
             if fa < fb
                 la += 1
-                la > length(xa) && return
-                fa = f(xa[la])
+                la > length(inda) && return
+                fa = innerbatch(inda[la])
             else
                 lb += 1
-                lb > length(xb) && return
-                fb = f(xb[lb])
+                lb > length(indb) && return
+                fb = innerbatch(indb[lb])
             end
         end
         # get number of valid a
         na = 0
-        @inbounds while la+na <= length(xa) && f(xa[la+na]) == fb
+        @inbounds while la+na <= length(inda) && innerbatch(inda[la+na]) == fb
             na += 1
         end
 
         nb = 0
-        @inbounds while lb+nb <= length(xb) && f(xb[lb+nb]) == fa
+        @inbounds while lb+nb <= length(indb) && innerbatch(indb[lb+nb]) == fa
             nb += 1
         end
         for ka=la:la+na-1, kb=lb:lb+nb-1
@@ -37,12 +40,6 @@ function chasing_game(g, f, xs::NTuple{2,Vector})
         la += na
         lb += nb
     end
-end
-
-function chasing_game(xs::NTuple)
-    res = Tuple{Int,Int}[]
-    chasing_game((x,y)->push!(res, (x,y)), x->x, xs)
-    return res
 end
 
 function get_inner(::Val{Ni}, x::BitStr{N,T}) where {N, Ni, T}
@@ -69,7 +66,7 @@ function sparse_contract(ni::Val{Ni}, nb::Val{Nb}, a::BinarySparseTensor{T1,Ti,M
     out = OMEinsum.get_output_array((a,b), (fill(2, M+N-2Ni-Nb)...,), true)
     ia, va = findnz(a)
     ib, vb = findnz(b)
-    chasing_game(x->get_inner_and_batch(ni, nb, x), (ia,ib)) do la, lb
+    chasing_game(x->get_inner_and_batch(ni, nb, x), ia,ib) do la, lb
     # for (la, lb) in naive_chase(get_inner_and_batch.(ni, nb, ia), get_inner.(ni, nb, ib))
         inda, vala = ia[la], va[la]
         indb, valb = ib[lb], vb[lb]

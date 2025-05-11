@@ -3,22 +3,26 @@ using SparseTN: get_outer, get_inner, get_inner_and_batch, get_batch, chasing_ga
 using Test
 using SparseArrays
 
-function naive_chase(a::Vector{T}, b::Vector{T}) where T
-    res = Tuple{Int,Int}[]
-    for ia in 1:length(a), ib in 1:length(b)
-        a[ia] == b[ib] && push!(res, (ia, ib))
-    end
-    return res
-end
-
 @testset "chasing gate 2 tensors" begin
-    cg = chasing_game(([1,2,3], [2,3,4]))
+    function naive_chase(a::Vector{T}, b::Vector{T}) where T
+        res = Tuple{Int,Int}[]
+        for ia in 1:length(a), ib in 1:length(b)
+            a[ia] == b[ib] && push!(res, (ia, ib))
+        end
+        return res
+    end
+    function my_chace(inda, indb)
+        res = Tuple{Int,Int}[]
+        chasing_game((x,y)->push!(res, (x,y)), x->x, inda, indb)
+        return res
+    end
+    cg = my_chace([1,2,3], [2,3,4])
     @test cg == [(2,1), (3,2)]
-    cg = chasing_game(([1,2,2,3], [3,4]))
+    cg = my_chace([1,2,2,3], [3,4])
     @test cg == [(4,1)]
-    cg = chasing_game(([1,2,2,3], [3,3,4]))
+    cg = my_chace([1,2,2,3], [3,3,4])
     @test cg == [(4,1), (4,2)]
-    cg = chasing_game(([1,2,2,3,3], [3,3,4]))
+    cg = my_chace([1,2,2,3,3], [3,3,4])
     @test cg == [(4,1), (4,2), (5,1), (5,2)]
     @test cg == naive_chase([1,2,2,3,3], [3,3,4])
 end
