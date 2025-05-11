@@ -23,8 +23,8 @@ function Base.getindex(t::BinarySparseTensor{T,Ti,N}, index::BitStr{N}) where {T
     @boundscheck idx <= length(t.data) || throw(BoundsError(t, index))
     @inbounds return t.data[idx]
 end
-function Base.getindex(t::BinarySparseTensor{T,Ti,N}, index::Int...) where {T,Ti,N}
-    idx =as_index(Ti, index)
+function Base.getindex(t::BinarySparseTensor{T,Ti,N}, index::Integer...) where {T,Ti,N}
+    idx = as_index(Ti, index)
     @boundscheck idx <= length(t.data) || throw(BoundsError(t, index))
     @inbounds return t.data[idx]
 end
@@ -85,7 +85,7 @@ end
 
 function Base.permutedims!(dest::BinarySparseTensor{Tv,Ti,N}, src::BinarySparseTensor{Tv,Ti,N}, dims::NTuple{N,Int}) where {Tv,Ti,N}
     dest.data.nzind .= bpermute.(src.data.nzind .- 1, Ref(dims)) .+ 1
-    order = sortperm(dest.data.nzind)
+    order = sortperm(dest.data.nzind; lt=(x, y) -> x < y)
     @inbounds dest.data.nzind .= dest.data.nzind[order]
     @inbounds dest.data.nzval .= getindex.(Ref(src.data.nzval), order)
     return dest

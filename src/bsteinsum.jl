@@ -164,7 +164,7 @@ function copy_indices(t::BinarySparseTensor{Tv,Ti}, targets::Vector{Vector{LT}})
         push!(inds, b+1)
         push!(vals, val)
     end
-    order = sortperm(inds)
+    order = sortperm(inds; lt=(x, y) -> x < y)
     return BinarySparseTensor(SparseVector(1<<nbits, inds[order], vals[order]))
 end
 

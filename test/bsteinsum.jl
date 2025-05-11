@@ -148,7 +148,6 @@ end
     @test SparseTN.uniquelabels(ein"ijk,jkl->oo") == ['i', 'j', 'k', 'l', 'o']
 end
 
-
 @testset "count legs" begin
     @test SparseTN.count_legs((1,2), (2,3), (1,3)) == Dict(1=>2,2=>2,3=>2)
     @test SparseTN.dangling_nleg_labels(((1,1,2), (2,3)), (5,7), SparseTN.count_legs((1,1,2), (2,3), (5,7))) == (((1,), (3,)), (5,7))
@@ -165,5 +164,16 @@ end
     t2 = bst(sv)
     T1 = Array(t1)
     T2 = Array(t2)
+    @test ein"ijk,jkl->ill"(t1,t2) ≈ ein"ijk,jkl->ill"(T1,T2)
+end
+
+@testset "longlong uint" begin
+    T1 = rand(2, 2, 2)
+    T1[T1 .< 0.5] .= 0
+    T2 = rand(2, 2, 2)
+    T2[T2 .< 0.5] .= 0
+
+    t1 = BinarySparseTensor{Float64, LongLongUInt{5}}(T1)
+    t2 = BinarySparseTensor{Float64, LongLongUInt{5}}(T2)
     @test ein"ijk,jkl->ill"(t1,t2) ≈ ein"ijk,jkl->ill"(T1,T2)
 end
