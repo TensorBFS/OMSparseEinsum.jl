@@ -75,5 +75,5 @@ end
     t = randn(2, 2)
     t2 = SparseTensor{Float64, LongLongUInt{5}}(t)
     @test t2 isa SparseTensor{Float64, LongLongUInt{5}}
-    @test t ≈ t2
+    @test t ≈ Array(t2)
 end

@@ -1,5 +1,5 @@
 function OMEinsum.get_output_array(xs::NTuple{N, SparseTensor{Tv,Ti,M} where {Tv,M}}, size::NTuple, fillzero::Bool) where {N,Ti}
-    return stzeros(promote_type(map(eltype,xs)...), Ti, Ti.(size)...)
+    return stzeros(promote_type(map(eltype,xs)...), Ti, size...)
 end
 
 # a method to compute the batched gemm of two sparse tensors
@@ -9,36 +9,36 @@ end
 # inda, indb: the nonzero indices of the two tensors, assumed to have sorted inner and batch indices
 # vala, valb: the values of the two tensors
 # tensor indices are sorted as: (inner, batch, outer)
-function batched_gemm_loops!(out::SparseTensor{Tv,Ti,M}, Noa, Nob, Nb, inda, indb, vala, valb) where {Tv,Ti,M}
+function batched_gemm_loops!(out::SparseTensor{Tv,Ti,M}, Noa::Ti, Nob::Ti, Nb::Ti, inda, indb, vala, valb) where {Tv,Ti,M}
     la, lb = 1, 1
     while lb <= length(indb) && la <= length(inda)
         # get inner and batch indices as fa, fb, get outer indices as foa, fob
-        fa = div(inda[la] - 1, Noa)
-        fb = div(indb[lb] - 1, Nob)
+        fa = div(inda[la] - Ti(1), Noa)
+        fb = div(indb[lb] - Ti(1), Nob)
         @inbounds while fa != fb
             if fa < fb
                 la += 1
                 la > length(inda) && return
-                fa = div(inda[la] - 1, Noa)
+                fa = div(inda[la] - Ti(1), Noa)
             else
                 lb += 1
                 lb > length(indb) && return
-                fb = div(indb[lb] - 1, Nob)
+                fb = div(indb[lb] - Ti(1), Nob)
             end
         end
         # get number of valid a
         na = 0
-        @inbounds while la+na <= length(inda) && div(inda[la+na] - 1, Noa) == fb
+        @inbounds while la+na <= length(inda) && div(inda[la+na] - Ti(1), Noa) == fb
             na += 1
         end
 
         nb = 0
-        @inbounds while lb+nb <= length(indb) && div(indb[lb+nb] - 1, Nob) == fa
+        @inbounds while lb+nb <= length(indb) && div(indb[lb+nb] - Ti(1), Nob) == fa
             nb += 1
         end
         for ka=la:la+na-1, kb=lb:lb+nb-1
-            ia, va = inda[ka] - 1, vala[ka]
-            ib, vb = indb[kb] - 1, valb[kb]
+            ia, va = inda[ka] - Ti(1), vala[ka]
+            ib, vb = indb[kb] - Ti(1), valb[kb]
             # output indices: (batch, outera, outerb)
             indout = (ia % Noa) + (ib % Nob) * Noa + (fb % Nb) * (Noa*Nob)  # get outer indices
             accumindex!(out.data, va*vb, indout+1)
@@ -79,7 +79,7 @@ function sparse_contract!(out::SparseTensor, ni::Int, nb::Int, a::SparseTensor{T
     ordera = sortperm(ia; lt=(x, y) -> x < y); ia, va = ia[ordera], va[ordera]
     orderb = sortperm(ib; lt=(x, y) -> x < y); ib, vb = ib[orderb], vb[orderb]
     noa, nob = M - ni - nb, N - ni - nb
-    batched_gemm_loops!(out, prod(size(a)[1:noa]), prod(size(b)[1:nob]), prod(size(a)[noa+1:noa+nb]), ia, ib, va, vb)
+    batched_gemm_loops!(out, prod(Ti.(size(a)[1:noa]); init=one(Ti)), prod(Ti.(size(b)[1:nob]); init=one(Ti)), prod(Ti.(size(a)[noa+1:noa+nb]); init=one(Ti)), ia, ib, va, vb)
     return out
 end
 

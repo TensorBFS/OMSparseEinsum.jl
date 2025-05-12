@@ -143,7 +143,7 @@ function copy_indices(t::SparseTensor{Tv,Ti}, targets::Vector{Vector{LT}}) where
 
     # get size of the output tensor
     vtar = vcat(targets...)
-    szv = zeros(Ti, length(vtar))
+    szv = zeros(Int, length(vtar))
     for (i, js) in enumerate(targets)
         for j in js
             szv[j] = size(t, i)

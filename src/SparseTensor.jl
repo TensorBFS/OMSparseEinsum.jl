@@ -1,9 +1,9 @@
 struct SparseTensor{Tv,Ti<:Integer,N} <: AbstractSparseArray{Tv, Ti, N}
-    size::NTuple{N, Ti}
+    size::NTuple{N, Int}
     strides::NTuple{N, Ti}
     data:: Dict{Ti, Tv}
 end
-function SparseTensor(data::SparseVector{Tv,Ti}, size::NTuple{N,Ti}) where {Tv,Ti,N}
+function SparseTensor(data::SparseVector{Tv,Ti}, size::NTuple{N,Int}) where {Tv,Ti,N}
     len = prod(size)
     @assert length(data) == len "data length should be $(len), got $(length(data))"
     d = Dict{Ti, Tv}()
@@ -13,7 +13,7 @@ function SparseTensor(data::SparseVector{Tv,Ti}, size::NTuple{N,Ti}) where {Tv,T
     strides = _size2strides(Ti, size)
     return SparseTensor{Tv, Ti, N}(size, strides, d)
 end
-_size2strides(::Type{Ti}, size) where {Ti} = ntuple(i->prod(k -> size[k], 1:i-1; init=one(Ti)), length(size))
+_size2strides(::Type{Ti}, size) where {Ti} = ntuple(i->prod(k -> Ti(size[k]), 1:i-1; init=one(Ti)), length(size))
 function SparseTensor(A::AbstractArray)
     SparseTensor(SparseVector(vec(A)), size(A))
 end
@@ -24,7 +24,7 @@ function SparseTensor{Tv, Ti}(A::AbstractArray) where {Tv, Ti}
             d[Ti(i)] = A[i]
         end
     end
-    return SparseTensor{Tv, Ti, ndims(A)}(Ti.(size(A)), _size2strides(Ti, Ti.(size(A))), d)
+    return SparseTensor{Tv, Ti, ndims(A)}(size(A), _size2strides(Ti, size(A)), d)
 end
 
 function Base.getindex(t::SparseTensor{T,Ti,N}, index::Integer...) where {T,Ti,N}
@@ -88,7 +88,7 @@ function Base.show(io::IO, t::SparseTensor{T,Ti,N}) where {T,Ti,N}
     end
 end
 
-stzeros(::Type{Tv}, ::Type{Ti}, size::Vararg{Ti, N}) where {Tv,Ti<:Integer,N} = SparseTensor{Tv,Ti,N}(size, _size2strides(Ti, size), Dict{Ti, Tv}())
+stzeros(::Type{Tv}, ::Type{Ti}, size::Vararg{Int, N}) where {Tv,Ti<:Integer,N} = SparseTensor{Tv,Ti,N}(size, _size2strides(Ti, size), Dict{Ti, Tv}())
 Base.zero(t::SparseTensor{Tv,Ti,N}) where {Tv,Ti,N} = SparseTensor{Tv,Ti,N}(t.size, t.strides, Dict{Ti, Tv}())
 Base.copy(t::SparseTensor{Tv,Ti,N}) where {Tv,Ti,N} = SparseTensor{Tv,Ti,N}(t.size, t.strides, copy(t.data))
 
