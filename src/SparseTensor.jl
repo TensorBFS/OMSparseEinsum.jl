@@ -1,5 +1,5 @@
 struct SparseTensor{Tv,Ti<:Integer,N} <: AbstractSparseArray{Tv, Ti, N}
-    size::NTuple{N, Int}
+    size::NTuple{N, Ti}
     strides::NTuple{N, Ti}
     data:: Dict{Ti, Tv}
 end
