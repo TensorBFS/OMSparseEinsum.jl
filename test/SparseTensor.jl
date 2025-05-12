@@ -29,7 +29,7 @@ using Test
 
     # zeros
     @test zero(t) == zeros(size(t))
-    t = stzeros(Float64, (2,2,2,2,2))
+    t = stzeros(Float64, Int, 2,2,2,2,2)
     @test size(t) == (2,2,2,2,2)
     @test eltype(t) == Float64
 end
@@ -63,7 +63,7 @@ end
 end
 
 @testset "permutedims" begin
-    t = strand(Float64, 5, 5, 5, 0.5)
+    t = strand(Float64, Int, 5, 5, 5, 0.5)
     @test ndims(t) == 3
     @test permutedims(t, (2,1,3)) isa SparseTensor
     AT = Array(t)
@@ -71,18 +71,9 @@ end
     @test t == AT
 end
 
-@testset "zero" begin
-    # LongLongUInt
+@testset "LongLongUInt" begin
     t = randn(2, 2)
     t2 = SparseTensor{Float64, LongLongUInt{5}}(t)
     @test t2 isa SparseTensor{Float64, LongLongUInt{5}}
     @test t ≈ t2
-end
-
-@testset "sort and permute" begin
-    @test bpermute(0b1100, [2,4,3,1]) === 0b0110
-    @test bpermute(0b1100, [4,2,3,1]) === 0b0101
-    @test bpermute(bit"1100", [2,4,3,1]) === bit"0110"
-    @test bpermute(bit"1100", [4,2,3,1]) === bit"0101"
-    @test sort(BitStr64{5}[1,8,4,2,9]) == sort([1,8,4,2,9])
 end

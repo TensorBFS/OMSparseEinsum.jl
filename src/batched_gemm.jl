@@ -1,5 +1,5 @@
-function OMEinsum.get_output_array(xs::NTuple{N, SparseTensor{Tv,Ti,M} where {Tv,M}}, size, fillzero::Bool) where {N,Ti}
-    return stzeros(promote_type(map(eltype,xs)...), Ti, length(size))
+function OMEinsum.get_output_array(xs::NTuple{N, SparseTensor{Tv,Ti,M} where {Tv,M}}, size::NTuple, fillzero::Bool) where {N,Ti}
+    return stzeros(promote_type(map(eltype,xs)...), Ti, Ti.(size)...)
 end
 
 # a method to compute the batched gemm of two sparse tensors

@@ -10,16 +10,21 @@ function SparseTensor(data::SparseVector{Tv,Ti}, size::NTuple{N,Ti}) where {Tv,T
     for (k, v) in zip(data.nzind, data.nzval)
         d[k] = v
     end
-    strides = _size2strides(size)
+    strides = _size2strides(Ti, size)
     return SparseTensor{Tv, Ti, N}(size, strides, d)
 end
-_size2strides(size::NTuple{N,Ti}) where {N,Ti} = ntuple(i->prod(size[1:i-1]; init=one(Ti)), N)
+_size2strides(::Type{Ti}, size::NTuple{N,Ti}) where {N,Ti} = ntuple(i->prod(size[1:i-1]; init=one(Ti)), N)
 function SparseTensor(A::AbstractArray)
     SparseTensor(SparseVector(vec(A)), size(A))
 end
 function SparseTensor{Tv, Ti}(A::AbstractArray) where {Tv, Ti}
-    sv = SparseVector(vec(A))
-    SparseTensor(SparseVector{Tv, Ti}(Ti(length(A)), Ti.(sv.nzind), sv.nzval), size(A))
+    d = Dict{Ti, Tv}()
+    for i in 1:length(A)
+        if A[i] != zero(Tv)
+            d[Ti(i)] = A[i]
+        end
+    end
+    return SparseTensor{Tv, Ti}(Ti.(size(A)), _size2strides(Ti, Ti.(size(A))), d)
 end
 
 function Base.getindex(t::SparseTensor{T,Ti,N}, index::Integer...) where {T,Ti,N}
@@ -35,7 +40,7 @@ function Base.getindex(t::SparseTensor{T,Ti,N}, index::Integer) where {T,Ti,N}
     return get(t.data, index, zero(T))
 end
 
-cartesian2linear(st::SparseTensor, index) = sum(i->st.strides[i]*(index[i]-1), 1:length(index)) + 1
+cartesian2linear(st::SparseTensor, index) = sum(i->st.strides[i]*(index[i]-1), 1:length(index); init=1)
 @generated function linear2cartesian(st::SparseTensor{Tv, Ti, N}, index::Integer) where {Tv, Ti, N}
     quote
         index = index - 1  # Convert to 0-based indexing for calculation
@@ -81,12 +86,12 @@ function Base.show(io::IO, t::SparseTensor{T,Ti,N}) where {T,Ti,N}
     end
 end
 
-stzeros(::Type{Tv}, size::NTuple{N,Ti}) where {Tv,Ti,N} = SparseTensor{Tv,Ti,N}(size, _size2strides(size), Dict{Ti, Tv}())
+stzeros(::Type{Tv}, ::Type{Ti}, size::Vararg{Ti, N}) where {Tv,Ti<:Integer,N} = SparseTensor{Tv,Ti,N}(size, _size2strides(Ti, size), Dict{Ti, Tv}())
 Base.zero(t::SparseTensor{Tv,Ti,N}) where {Tv,Ti,N} = SparseTensor{Tv,Ti,N}(t.size, t.strides, Dict{Ti, Tv}())
 Base.copy(t::SparseTensor{Tv,Ti,N}) where {Tv,Ti,N} = SparseTensor{Tv,Ti,N}(t.size, t.strides, copy(t.data))
 
 # random sparse tensor
-strand(::Type{T}, args::Real...) where {T} = SparseTensor(sprand(T, prod(args[1:end-1]), args[end]), args[1:end-1])
+strand(::Type{Tv}, ::Type{Ti}, args::Real...) where {Tv, Ti} = SparseTensor(SparseVector{Tv, Ti}(sprand(Tv, prod(args[1:end-1]), args[end])), args[1:end-1])
 
 function Base.permutedims!(dest::SparseTensor{Tv,Ti,N}, src::SparseTensor{Tv,Ti,N}, dims::NTuple{N,Int}) where {Tv,Ti,N}
     for (k, v) in src.data
@@ -99,7 +104,7 @@ function bpermute(b::T, order::NTuple{N,Integer}, src::SparseTensor, dest::Spars
     res = zero(b)
     ci = linear2cartesian(src, b)
     for (i, o) in enumerate(order)
-        res += ci[o] * dest.strides[i]
+        res += (ci[o] - 1) * dest.strides[i]
     end
     return res + 1
 end

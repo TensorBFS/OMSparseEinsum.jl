@@ -93,6 +93,7 @@ function einsum_unary(ix, iy, x)
     x = permutedims(x, perm)
 
     # Copy indices
+    @assert length(iy_mid) == ndims(x)
     copy_indices(x, map(l->findall(==(l), iy), iy_mid))
 end
 
@@ -147,23 +148,32 @@ function reduce_indices(t::SparseTensor{Tv,Ti,N}, reds::Vector{Vector{LT}}) wher
             push!(vals, val)
         end
     end
-    return SparseTensor{Tv, Ti, N-sum(x -> length(x) - 1, reds)}(Dict(zip(inds, vals)))
+    sz = ntuple(i->size(t, bits[i]), length(bits))
+    return SparseTensor{Tv, Ti, length(bits)}(sz, _size2strides(Ti, sz), Dict(zip(inds, vals)))
 end
 # masked locations are all 1s or 0s
 allsame(x::T, mask::T) where T<:Integer = allone(x, mask) || !anyone(x, mask)
 
 function copy_indices(t::SparseTensor{Tv,Ti}, targets::Vector{Vector{LT}}) where {Tv,Ti,LT}
+    @assert ndims(t) == length(targets)
     isempty(targets) && return t
     inds = Ti[]
     vals = Tv[]
-    nbits = sum(length, targets)
+    vtar = vcat(targets...)
     for (ind, val) in t.data
         b = ind-1
         b = copybits(b, targets)
         push!(inds, b+1)
         push!(vals, val)
     end
-    return SparseTensor{Tv, Ti, nbits}(Dict(zip(inds, vals)))
+    szv = zeros(Ti, length(vtar))  # size of the output tensor
+    for (i, js) in enumerate(targets)
+        for j in js
+            szv[j] = size(t, i)
+        end
+    end
+    sz = (szv...,)
+    return SparseTensor{Tv, Ti, length(vtar)}(sz, _size2strides(Ti, sz), Dict(zip(inds, vals)))
 end
 
 function copybits(b::Ti, targets::Vector{Vector{LT}}) where {Ti,LT}
@@ -180,8 +190,7 @@ function trace_indices(t::SparseTensor{Tv,Ti}; dims::Vector{Vector{LT}}) where {
     ymask = _ymask_from_trs(Ti, ndims(t), dims)
     bits = baddrs(ymask)
     red_masks = [bmask(Ti, red...) for red in dims]
-    NO = length(bits)
-    sv = stzeros(Tv, Ti, NO)
+    sv = stzeros(Tv, Ti, map(bit->size(t, bit), bits)...)
     for (ind, val) in t.data
         b = ind-1
         if all(red->allsame(b, red), red_masks)
@@ -200,7 +209,8 @@ function _remsum(f, t::SparseTensor{Tv,Ti,N}, remdims::NTuple{NR}) where {Tv,Ti,
         rd = isempty(remdims) ? zero(ind) : readbit(ind-1, remdims...)
         accumindex!(d, f(val), rd + 1)
     end
-    return SparseTensor{Tf, Ti, NR}(d)
+    sz = map(i->size(t, i), remdims)
+    return SparseTensor{Tf, Ti, NR}(sz, _size2strides(Ti, sz), d)
 end
 dropsum(f, t::SparseTensor; dims=:) = dims == Colon() ? Base._sum(f, t, Colon()) : _remsum(f, t, (setdiff(1:ndims(t), dims)...,))
 dropsum(f, t::AbstractArray; dims=:) = dims == Colon() ? Base._sum(f, t, Colon()) : dropdims(Base._sum(f, t, dims), dims=dims)
