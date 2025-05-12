@@ -113,7 +113,7 @@ function _get_ptraces(ix::Vector{LT}, iy::Vector{LT}) where LT
 end
 
 function _ymask_from_reds(::Type{Ti}, ndim::Int, reds) where Ti
-    ymask = flip(Ti(0), bmask(Ti, 1:ndim))
+    ymask = flip(zero(Ti), bmask(Ti, 1:ndim))
     for red in reds
         ymask = unsetbit(ymask, bmask(Ti,red[2:end]...))
     end
@@ -121,12 +121,12 @@ function _ymask_from_reds(::Type{Ti}, ndim::Int, reds) where Ti
 end
 
 function unsetbit(x::T, mask::T) where T<:Integer
-    msk = ~T(0) ⊻ mask
+    msk = ~zero(T) ⊻ mask
     x & msk
 end
 
 function _ymask_from_trs(::Type{Ti}, ndim::Int, reds) where Ti
-    ymask = flip(Ti(0), bmask(Ti, 1:ndim))
+    ymask = flip(zero(Ti), bmask(Ti, 1:ndim))
     for red in reds
         ymask = unsetbit(ymask, bmask(Ti, red...))
     end
@@ -167,7 +167,7 @@ function copy_indices(t::BinarySparseTensor{Tv,Ti}, targets::Vector{Vector{LT}})
 end
 
 function copybits(b::Ti, targets::Vector{Vector{LT}}) where {Ti,LT}
-    res = Ti(0)
+    res = zero(Ti)
     for (i,t) in enumerate(targets)
         for it in t
             res |= readbit(b, i)<<(it-1)
@@ -193,21 +193,18 @@ function trace_indices(t::BinarySparseTensor{Tv,Ti}; dims::Vector{Vector{LT}}) w
 end
 
 Base._sum(f, t::BinarySparseTensor, ::Colon) = Base._sum(f, values(t.data), Colon())
-function _dropsum(f, t::BinarySparseTensor{Tv,Ti,N}, dims) where {Tv,Ti,N}
-    remdims = (setdiff(1:N, dims)...,)
-    Tf = typeof(f(Tv(0)))
+function _remsum(f, t::BinarySparseTensor{Tv,Ti,N}, remdims::NTuple{NR}) where {Tv,Ti,N,NR}
+    Tf = typeof(f(zero(Tv)))
     d = Dict{Ti,Tf}()
     for (ind, val) in t.data
         rd = isempty(remdims) ? zero(ind) : readbit(ind-1, remdims...)
-        d[rd] = get(d, rd, Tf(0)) + f(val)
+        d[rd + 1] = get(d, rd + 1, zero(Tf)) + f(val)
     end
-    return BinarySparseTensor{Tf, Ti, N-length(dims)}(d)
+    return BinarySparseTensor{Tf, Ti, NR}(d)
 end
-
-_dropsum(f, t::BinarySparseTensor, dims::Colon) = Base._sum(f, t, dims)
-_dropsum(f, t::AbstractArray, dims::Colon) = Base._sum(f, t, dims)
-_dropsum(f, t::AbstractArray, dims) = dropdims(Base._sum(f, t, dims), dims=dims)
-dropsum(t::AbstractArray; dims=:) = _dropsum(identity, t, dims)
+dropsum(f, t::BinarySparseTensor; dims=:) = dims == Colon() ? Base._sum(f, t, Colon()) : _remsum(f, t, (setdiff(1:ndims(t), dims)...,))
+dropsum(f, t::AbstractArray; dims=:) = dims == Colon() ? Base._sum(f, t, Colon()) : dropdims(Base._sum(f, t, dims), dims=dims)
+dropsum(t::AbstractArray; dims=:) = dropsum(identity, t; dims)
 
 function multidropsum(t::BinarySparseTensor; dims)
     all(d->length(d) == 1, dims) && return dropsum(t; dims=first.(dims))
