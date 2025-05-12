@@ -4,10 +4,10 @@ using BitBasis, SparseArrays
 using Base.Cartesian
 using OMEinsum
 
-export bst_zeros, bstrand, BinarySparseTensor
+export stzeros, strand, SparseTensor
 
-include("BinarySparseTensor.jl")
+include("SparseTensor.jl")
 include("batched_gemm.jl")
-include("bsteinsum.jl")
+include("einsum.jl")
 
 end

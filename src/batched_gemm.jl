@@ -1,7 +1,5 @@
-# OMEinsum.asarray(x::Number, arr::BinarySparseTensor) = BinarySparseTensor(OMEinsum.asarray(x, arr.data))
-
-function OMEinsum.get_output_array(xs::NTuple{N, BinarySparseTensor{Tv,Ti,M} where {Tv,M}}, size, fillzero::Bool) where {N,Ti}
-    return bst_zeros(promote_type(map(eltype,xs)...), Ti, length(size))
+function OMEinsum.get_output_array(xs::NTuple{N, SparseTensor{Tv,Ti,M} where {Tv,M}}, size, fillzero::Bool) where {N,Ti}
+    return stzeros(promote_type(map(eltype,xs)...), Ti, length(size))
 end
 
 # a method to compute the batched gemm of two sparse tensors
@@ -10,7 +8,7 @@ end
 # ni, nb: the inner and batch dimensions of the two tensors
 # inda, indb: the nonzero indices of the two tensors, assumed to have sorted inner and batch indices
 # vala, valb: the values of the two tensors
-function batched_gemm_loops!(out::BinarySparseTensor{Tv,Ti,M}, dima::Int, dimb::Int, ni::Int, nb::Int, inda, indb, vala::AbstractVector{Tv}, valb::AbstractVector{Tv}) where {Tv,Ti,M}
+function batched_gemm_loops!(out::SparseTensor{Tv,Ti,M}, dima::Int, dimb::Int, ni::Int, nb::Int, inda, indb, vala::AbstractVector{Tv}, valb::AbstractVector{Tv}) where {Tv,Ti,M}
     noa, nob = dima - nb - ni, dimb - nb - ni
     offseta = dima - nb - ni
     offsetb = dimb - nb - ni
@@ -78,7 +76,7 @@ function accumindex!(h::Dict{K,V}, v::V, key::K) where V where K
 end
 
 # indice are sorted: (inner, batch, outer)
-function sparse_contract!(out::BinarySparseTensor, ni::Int, nb::Int, a::BinarySparseTensor{T1,Ti,M}, b::BinarySparseTensor{T2,Ti,N}) where {T1,T2,N,M,Ti}
+function sparse_contract!(out::SparseTensor, ni::Int, nb::Int, a::SparseTensor{T1,Ti,M}, b::SparseTensor{T2,Ti,N}) where {T1,T2,N,M,Ti}
     _ia, _va = findnz(a)  # TODO: check if needs copy
     _ib, _vb = findnz(b)
     ia, va, ib, vb = collect(_ia), collect(_va), collect(_ib), collect(_vb)
@@ -88,7 +86,7 @@ function sparse_contract!(out::BinarySparseTensor, ni::Int, nb::Int, a::BinarySp
     return out
 end
 
-function batched_contract(ixs, iy, xs::NTuple{NT, BinarySparseTensor}) where {NT}
+function batched_contract(ixs, iy, xs::NTuple{NT, SparseTensor}) where {NT}
     a, b = xs
     pa, pb, pout, Ni, Nb = analyse_batched_perm(ixs..., iy)
     a = permutedims(a, pa)

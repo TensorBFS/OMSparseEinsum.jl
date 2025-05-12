@@ -4,8 +4,8 @@ using Test
 using SparseArrays
 
 @testset "clean up tensors" begin
-    ta = bstrand(4, 1.0)
-    tb = bstrand(4, 1.0)
+    ta = strand(4, 1.0)
+    tb = strand(4, 1.0)
     ixs = [[3,4,5,6], [1,2,3,4]]
     iy = [1]
     newixs, newxs, newiy = SparseTN.cleanup_dangling_nlegs(ixs, [ta, tb], iy)
@@ -25,8 +25,8 @@ using SparseArrays
 end
 
 @testset "sparse contract" begin
-    ta = bstrand(4, 0.5)
-    tb = bstrand(4, 0.5)
+    ta = strand(4, 0.5)
+    tb = strand(4, 0.5)
     TA, TB = Array(ta), Array(tb)
     out = OMEinsum.get_output_array((ta,tb), (fill(2, 4)...,), true)
     @test sum(sparse_contract!(out, 2, 0, ta, tb)) ≈ sum(ein"lkji,nmji->lknm"(TA, TB))
@@ -34,8 +34,8 @@ end
     @test sparse_contract!(out, 2, 0, ta, tb) ≈ ein"lkji,nmji->lknm"(TA, TB)
 
     # batched
-    ta = bstrand(5, 0.5)
-    tb = bstrand(5, 0.5)
+    ta = strand(5, 0.5)
+    tb = strand(5, 0.5)
     TA, TB = Array(ta), Array(tb)
     out = OMEinsum.get_output_array((ta,tb), (fill(2, 5)...,), true)
     @test sum(Array(sparse_contract!(out, 2, 1, ta, tb))) ≈ sum(ein"lkbji,nmbji->lknmb"(TA, TB))
@@ -48,78 +48,78 @@ end
     @test perms == ([1, 2, 3, 4, 5], [1, 2, 3, 4, 5], (1, 2, 3, 4, 5), 2, 1)
 
     sv = SparseVector([1.0,0,0,1,1,0,0,0])
-    t1 = BinarySparseTensor(sv)
-    t2 = BinarySparseTensor(sv)
+    t1 = SparseTensor(sv)
+    t2 = SparseTensor(sv)
     T1 = Array(t1)
     T2 = Array(t2)
     @test ein"ijk,jkl->il"(t1,t2) ≈ ein"ijk,jkl->il"(T1,T2)
 
-    ta = bstrand(2, 0.5)
-    tb = bstrand(2, 0.5)
+    ta = strand(2, 0.5)
+    tb = strand(2, 0.5)
     TA, TB = Array(ta), Array(tb)
     @test ein"ij,jk->ik"(ta,tb) ≈ ein"ij,jk->ik"(TA,TB)
     @test ta ≈ TA
     @test tb ≈ TB
 
     # with batch
-    ta = bstrand(7, 0.5)
-    tb = bstrand(6, 0.5)
+    ta = strand(7, 0.5)
+    tb = strand(6, 0.5)
     TA, TB = Array(ta), Array(tb)
     code = ein"ijklmbc,ijbxcy->bcmlxky"
     res = code(ta, tb)
-    @test res isa BinarySparseTensor
+    @test res isa SparseTensor
     @test sum(res) ≈ sum(code(TA, TB))
     @test Array(res) ≈ code(TA, TB)
 end
 
 @testset "sum, ptrace and permute" begin
-    ta = bstrand(7, 0.7)
+    ta = strand(7, 0.7)
     TA = Array(ta)
     res = SparseTN.dropsum(ta, dims=(2,4))
-    @test res isa BinarySparseTensor
+    @test res isa SparseTensor
     @test ndims(res) == 5
     @test Array(res) ≈ SparseTN.dropsum(TA, dims=(2,4))
     @test SparseTN.dropsum(ta) ≈ SparseTN.dropsum(TA)
     @test sum(ta) ≈ sum(TA)
     # sum
     res = ein"ijklbca->"(ta)
-    @test res isa BinarySparseTensor
+    @test res isa SparseTensor
     @test Array(res) ≈ ein"ijklbca->"(TA)
     res = ein"ijklbca->i"(ta)
-    @test res isa BinarySparseTensor
+    @test res isa SparseTensor
     @test Array(res) ≈ ein"ijklbca->i"(TA)
 
     # trace
-    tb = bstrand(2, 1.0)
+    tb = strand(2, 1.0)
     TB = Array(tb)
     res = ein"ii->"(tb)
-    @test res isa BinarySparseTensor
+    @test res isa SparseTensor
     @test Array(res) ≈ ein"ii->"(TB)
 
     # reduction
     code = ein"ijjlbbb->ijlb"
     res = code(ta)
-    @test res isa BinarySparseTensor
+    @test res isa SparseTensor
     @test Array(res) ≈ code(TA)
     code = ein"ijjlbbb->ljbi"
     res = code(ta)
-    @test res isa BinarySparseTensor
+    @test res isa SparseTensor
     @test Array(res) ≈ code(TA)
 
     # ptrace
     res = ein"ijjlbca->ailcb"(ta)
-    @test res isa BinarySparseTensor
+    @test res isa SparseTensor
     @test Array(res) |> sum ≈ ein"ijjlbca->ailcb"(TA) |> sum
     @test Array(res) ≈ ein"ijjlbca->ailcb"(TA)
 
     # permute
     res = ein"ijklbca->abcijkl"(ta)
-    @test res isa BinarySparseTensor
+    @test res isa SparseTensor
     @test Array(res) ≈ ein"ijklbca->abcijkl"(TA)
 end
 
 @testset "clean up tensors" begin
-    ta = bstrand(1, 1.0)
+    ta = strand(1, 1.0)
     TA = Array(ta)
     # first reduce indices
     for code in [ein"i->iii", ein"i->jj", ein"k->kkj"]
@@ -127,15 +127,15 @@ end
         if isempty(setdiff(OMEinsum.getiyv(code), union(OMEinsum.getixsv(code)...)))
             res = code(ta, size_info=Dict('j'=>2))
             @show code
-            @test res isa BinarySparseTensor
+            @test res isa SparseTensor
             @test res ≈ code(TA, size_info=Dict('j'=>2))
         end
     end
-    ta = bstrand(7, 0.5)
+    ta = strand(7, 0.5)
     TA = Array(ta)
     for code in [ein"iiiiiii->iiiiii", ein"iikjjjj->ikj", ein"iikjjjl->ikj"]
         res = code(ta)
-        @test res isa BinarySparseTensor
+        @test res isa SparseTensor
         @test res ≈ code(TA)
     end
 end
@@ -160,8 +160,8 @@ end
 
 @testset "binary with copy indices" begin
     sv = SparseVector([1.0,0,0,1,1,0,0,0])
-    t1 = BinarySparseTensor(sv)
-    t2 = BinarySparseTensor(sv)
+    t1 = SparseTensor(sv)
+    t2 = SparseTensor(sv)
     T1 = Array(t1)
     T2 = Array(t2)
     @test ein"ijk,jkl->ill"(t1,t2) ≈ ein"ijk,jkl->ill"(T1,T2)
@@ -173,7 +173,7 @@ end
     T2 = rand(2, 2, 2)
     T2[T2 .< 0.5] .= 0
 
-    t1 = BinarySparseTensor{Float64, LongLongUInt{5}}(T1)
-    t2 = BinarySparseTensor{Float64, LongLongUInt{5}}(T2)
+    t1 = SparseTensor{Float64, LongLongUInt{5}}(T1)
+    t2 = SparseTensor{Float64, LongLongUInt{5}}(T2)
     @test ein"ijk,jkl->ill"(t1,t2) ≈ ein"ijk,jkl->ill"(T1,T2)
 end

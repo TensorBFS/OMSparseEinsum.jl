@@ -1,10 +1,10 @@
 using SparseTN
 using Test
 
-@testset "BinarySparseTensor" begin
-    include("BinarySparseTensor.jl")
+@testset "SparseTensor" begin
+    include("SparseTensor.jl")
 end
 
-@testset "bsteinsum" begin
-    include("bsteinsum.jl")
+@testset "einsum" begin
+    include("einsum.jl")
 end
