@@ -6,11 +6,16 @@ end
 
 # a method to compute the batched gemm of two sparse tensors
 # g: a function that operates on the indices
-# inda, indb: the nonzero indices of the two tensors, assumed to have sorted inner and batch indices
+# dima, dimb: the dimensions of the two tensors
 # ni, nb: the inner and batch dimensions of the two tensors
-function chasing_game(g, dima::Int, dimb::Int, ni::Int, nb::Int, inda, indb)
+# inda, indb: the nonzero indices of the two tensors, assumed to have sorted inner and batch indices
+function batched_gemm_loops!(out::BinarySparseTensor{Tv,Ti,M}, dima::Int, dimb::Int, ni::Int, nb::Int, inda, indb, vala::AbstractVector{Tv}, valb::AbstractVector{Tv}) where {Tv,Ti,M}
+    noa, nob = dima - nb - ni, dimb - nb - ni
     offseta = dima - nb - ni
     offsetb = dimb - nb - ni
+    outermaska = bmask(1:noa)
+    outermaskb = bmask(1:nob)
+    batchmask = bmask(1:nb)
     la, lb = 1, 1
     while lb <= length(indb) && la <= length(inda)
         fa = (inda[la] - 1) >> offseta
@@ -37,32 +42,48 @@ function chasing_game(g, dima::Int, dimb::Int, ni::Int, nb::Int, inda, indb)
             nb += 1
         end
         for ka=la:la+na-1, kb=lb:lb+nb-1
-            g(ka, kb)
+            ia, va = (inda[ka] - 1), vala[ka]
+            ib, vb = (indb[kb] - 1), valb[kb]
+            # output indices: (batch, outera, outerb)
+            indout = (ia & outermaska) | ((ib & outermaskb) << noa) | (((ib >> nob) & batchmask) << (noa+nob))  # get outer indices
+            accumindex!(out.data, va*vb, indout+1)
         end
         la += na
         lb += nb
     end
 end
 
+# accumulate a value in a dictionary, adapted from Base.get!
+function accumindex!(h::Dict{K,V}, v::V, key::K) where V where K
+    index, sh = Base.ht_keyindex2_shorthash!(h, key)
+    if index > 0  # key exists
+        h.vals[index] += v
+        return nothing
+    end
+
+    # key absent, set value
+    age0 = h.age
+    if h.age != age0
+        index, sh = Base.ht_keyindex2_shorthash!(h, key)
+    end
+    if index > 0
+        h.age += 1
+        @inbounds h.keys[index] = key
+        @inbounds h.vals[index] = v
+    else
+        @inbounds Base._setindex!(h, v, key, -index, sh)
+    end
+    return nothing
+end
+
 # indice are sorted: (inner, batch, outer)
 function sparse_contract!(out::BinarySparseTensor, ni::Int, nb::Int, a::BinarySparseTensor{T1,Ti,M}, b::BinarySparseTensor{T2,Ti,N}) where {T1,T2,N,M,Ti}
-    noa, nob = M-ni-nb, N-ni-nb
-    outermaska = bmask(1:noa)
-    outermaskb = bmask(1:nob)
-    batchmask = bmask(1:nb)
-
     _ia, _va = findnz(a)  # TODO: check if needs copy
     _ib, _vb = findnz(b)
     ia, va, ib, vb = collect(_ia), collect(_va), collect(_ib), collect(_vb)
     ordera = sortperm(ia; lt=(x, y) -> x < y); ia, va = ia[ordera], va[ordera]
     orderb = sortperm(ib; lt=(x, y) -> x < y); ib, vb = ib[orderb], vb[orderb]
-    chasing_game(M, N, ni, nb, ia, ib) do la, lb
-        inda, vala = (ia[la] - 1), va[la]
-        indb, valb = (ib[lb] - 1), vb[lb]
-        # output indices: (batch, outera, outerb)
-        indout = (inda & outermaska) | ((indb & outermaskb) << noa) | (((indb >> nob) & batchmask) << (noa+nob))  # get outer indices
-        @inbounds out[indout+1] += vala*valb
-    end
+    batched_gemm_loops!(out, M, N, ni, nb, ia, ib, va, vb)
     return out
 end
 

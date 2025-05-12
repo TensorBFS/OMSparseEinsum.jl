@@ -27,7 +27,7 @@ end
 function count_legs(ixs...)
     lc = Dict{eltype(ixs[1]),Int}()
     for l in Iterators.flatten(ixs)
-        lc[l] = get(lc, l, 0) + 1
+        accumindex!(lc, 1, l)
     end
     return lc
 end
@@ -181,15 +181,15 @@ function trace_indices(t::BinarySparseTensor{Tv,Ti}; dims::Vector{Vector{LT}}) w
     bits = baddrs(ymask)
     red_masks = [bmask(Ti, red...) for red in dims]
     NO = length(bits)
-    sv = SparseVector(1<<NO, Ti[], Tv[])
+    sv = bst_zeros(Tv, Ti, NO)
     for (ind, val) in t.data
         b = ind-1
         if all(red->allsame(b, red), red_masks)
             b = isempty(bits) ? zero(b) : readbit(b, bits...)
-            sv[b+1] += val
+            accumindex!(sv.data, val, b+1)
         end
     end
-    return BinarySparseTensor(sv)
+    return sv
 end
 
 Base._sum(f, t::BinarySparseTensor, ::Colon) = Base._sum(f, values(t.data), Colon())
@@ -198,7 +198,7 @@ function _remsum(f, t::BinarySparseTensor{Tv,Ti,N}, remdims::NTuple{NR}) where {
     d = Dict{Ti,Tf}()
     for (ind, val) in t.data
         rd = isempty(remdims) ? zero(ind) : readbit(ind-1, remdims...)
-        d[rd + 1] = get(d, rd + 1, zero(Tf)) + f(val)
+        accumindex!(d, f(val), rd + 1)
     end
     return BinarySparseTensor{Tf, Ti, NR}(d)
 end

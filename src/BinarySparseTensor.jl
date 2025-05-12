@@ -45,12 +45,8 @@ function Base.size(t::BinarySparseTensor{T,Ti,N}, i::Int) where {T,Ti,N}
 end
 Base.size(t::BinarySparseTensor{T,Ti,N}) where {T,Ti,N} = ntuple(i->2, N)
 
-function Base.setindex!(t::BinarySparseTensor{T,Ti,N}, val, index::BitStr{N,Ti}) where {T,Ti,N}
+Base.@propagate_inbounds function Base.setindex!(t::BinarySparseTensor{T,Ti,N}, val, index) where {T, Ti, N}
     return t.data[as_index(Ti, index)] = val
-end
-function Base.setindex!(t::BinarySparseTensor{T,Ti,N}, val, index::Integer) where {T, Ti, N}
-    @boundscheck one(Ti) <= index <= one(Ti)<<N || throw(BoundsError(t, index))
-    return @inbounds t.data[as_index(Ti, index)] = val
 end
 
 SparseArrays.nnz(t::BinarySparseTensor) = length(t.data)

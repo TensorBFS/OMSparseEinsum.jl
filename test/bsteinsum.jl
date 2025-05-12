@@ -1,5 +1,5 @@
 using OMEinsum, SparseTN, BitBasis
-using SparseTN: chasing_game, cleanup_duplicated_legs, cleanup_dangling_nlegs, dropsum, sparse_contract!
+using SparseTN: cleanup_duplicated_legs, cleanup_dangling_nlegs, dropsum, sparse_contract!
 using Test
 using SparseArrays
 
