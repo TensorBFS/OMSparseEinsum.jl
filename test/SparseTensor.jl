@@ -1,5 +1,5 @@
-using BitBasis, SparseArrays, SparseTN
-using SparseTN: bpermute, linear2cartesian, cartesian2linear
+using BitBasis, SparseArrays, OMSparseEinsum
+using OMSparseEinsum: bpermute, linear2cartesian, cartesian2linear
 using Test
 
 @testset "constructor" begin

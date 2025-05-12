@@ -1,5 +1,5 @@
-name = "SparseTN"
-uuid = "fecd5469-1712-4901-ad7a-bda207dba756"
+name = "OMSparseEinsum"
+uuid = "3e48f91b-32ac-4cc7-9c0f-e9f53eeef932"
 authors = ["GiggleLiu <cacate0129@gmail.com> and contributors"]
 version = "1.0.0-DEV"
 

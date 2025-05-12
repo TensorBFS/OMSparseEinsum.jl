@@ -1,4 +1,4 @@
-using SparseTN
+using OMSparseEinsum
 using Test
 
 @testset "SparseTensor" begin

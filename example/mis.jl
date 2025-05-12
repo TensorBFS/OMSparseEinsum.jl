@@ -1,5 +1,5 @@
 using GenericTensorNetworks
-using SparseTN
+using OMSparseEinsum
 
 function mis3_network(n::Int)
     graph = random_regular_graph(n, 3)

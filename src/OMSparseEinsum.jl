@@ -1,4 +1,4 @@
-module SparseTN
+module OMSparseEinsum
 
 using BitBasis, SparseArrays
 using Base.Cartesian

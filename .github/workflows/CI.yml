@@ -43,4 +43,4 @@ jobs:
         with:
           files: lcov.info
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: TensorBFS/SparseTN.jl
+          slug: TensorBFS/OMSparseEinsum.jl

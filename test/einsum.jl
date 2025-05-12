@@ -1,5 +1,5 @@
-using OMEinsum, SparseTN, BitBasis
-using SparseTN: cleanup_duplicated_legs, cleanup_dangling_nlegs, dropsum, sparse_contract!
+using OMEinsum, OMSparseEinsum, BitBasis
+using OMSparseEinsum: cleanup_duplicated_legs, cleanup_dangling_nlegs, dropsum, sparse_contract!
 using Test
 using SparseArrays
 
@@ -8,7 +8,7 @@ using SparseArrays
     tb = strand(Float64, Int, 4, 1.0)
     ixs = [[3,4,5,6], [1,2,3,4]]
     iy = [1]
-    newixs, newxs, newiy = SparseTN.cleanup_dangling_nlegs(ixs, [ta, tb], iy)
+    newixs, newxs, newiy = OMSparseEinsum.cleanup_dangling_nlegs(ixs, [ta, tb], iy)
     @test newixs == [[3,4], [1,3,4]]
     @test newxs[1] ≈ dropsum(ta, dims=(3,4))
     @test newxs[2] ≈ dropsum(tb, dims=(2,))
@@ -17,7 +17,7 @@ using SparseArrays
     # the output has dangling legs
     ixs = [[3,4,5,6], [1,2,3,4]]
     iy = [1, 8]
-    newixs, newxs, newiy = SparseTN.cleanup_dangling_nlegs(ixs, [ta, tb], iy)
+    newixs, newxs, newiy = OMSparseEinsum.cleanup_dangling_nlegs(ixs, [ta, tb], iy)
     @test newixs == [[3,4], [1,3,4]]
     @test newxs[1] ≈ dropsum(ta, dims=(3,4))
     @test newxs[2] ≈ dropsum(tb, dims=(2,))
@@ -45,7 +45,7 @@ end
 end
 
 @testset "einsum batched contract" begin
-    perms = SparseTN.analyse_batched_perm(('b','j','c','a','e'), ('k','d','c','a','e'), ('b','j','k','d','c'))
+    perms = OMSparseEinsum.analyse_batched_perm(('b','j','c','a','e'), ('k','d','c','a','e'), ('b','j','k','d','c'))
     @test perms == ([1, 2, 3, 4, 5], [1, 2, 3, 4, 5], (1, 2, 3, 4, 5), 2, 1)
 
     sv = SparseVector([1.0,0,0,1,1,0,0,0])
@@ -76,11 +76,11 @@ end
 @testset "sum, ptrace and permute" begin
     ta = strand(Float64, Int, 3, 4, 2, 2, 2, 2, 2, 0.7)
     TA = Array(ta)
-    res = SparseTN.dropsum(ta, dims=(2,4))
+    res = OMSparseEinsum.dropsum(ta, dims=(2,4))
     @test res isa SparseTensor
     @test ndims(res) == 5
-    @test Array(res) ≈ SparseTN.dropsum(TA, dims=(2,4))
-    @test SparseTN.dropsum(ta) ≈ SparseTN.dropsum(TA)
+    @test Array(res) ≈ OMSparseEinsum.dropsum(TA, dims=(2,4))
+    @test OMSparseEinsum.dropsum(ta) ≈ OMSparseEinsum.dropsum(TA)
     @test sum(ta) ≈ sum(TA)
     # sum
     res = ein"ijklbca->"(ta)
@@ -153,15 +153,15 @@ end
 end
 
 @testset "clean up" begin
-    @test SparseTN.allsame(bit"000110", bmask(BitStr64{6}, 2,3))
-    @test !SparseTN.allsame(bit"000110", bmask(BitStr64{6}, 2,4))
-    @test SparseTN._get_reductions([1,2,2,4,3,1,5], [1,2,3,4,5]) == [[1,6], [2,3]]
-    @test SparseTN.uniquelabels(ein"ijk,jkl->oo") == ['i', 'j', 'k', 'l', 'o']
+    @test OMSparseEinsum.allsame(bit"000110", bmask(BitStr64{6}, 2,3))
+    @test !OMSparseEinsum.allsame(bit"000110", bmask(BitStr64{6}, 2,4))
+    @test OMSparseEinsum._get_reductions([1,2,2,4,3,1,5], [1,2,3,4,5]) == [[1,6], [2,3]]
+    @test OMSparseEinsum.uniquelabels(ein"ijk,jkl->oo") == ['i', 'j', 'k', 'l', 'o']
 end
 
 @testset "count legs" begin
-    @test SparseTN.count_legs((1,2), (2,3), (1,3)) == Dict(1=>2,2=>2,3=>2)
-    @test SparseTN.dangling_nleg_labels(((1,1,2), (2,3)), (5,7), SparseTN.count_legs((1,1,2), (2,3), (5,7))) == (((1,), (3,)), (5,7))
+    @test OMSparseEinsum.count_legs((1,2), (2,3), (1,3)) == Dict(1=>2,2=>2,3=>2)
+    @test OMSparseEinsum.dangling_nleg_labels(((1,1,2), (2,3)), (5,7), OMSparseEinsum.count_legs((1,1,2), (2,3), (5,7))) == (((1,), (3,)), (5,7))
 end
 
 @testset "binary with copy indices" begin
