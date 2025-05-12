@@ -153,9 +153,9 @@ end
     @test SparseTN.dangling_nleg_labels(((1,1,2), (2,3)), (5,7), SparseTN.count_legs((1,1,2), (2,3), (5,7))) == (((1,), (3,)), (5,7))
 end
 
-@testset "unsetbit, copybits" begin
+@testset "unsetbit, copyidx" begin
     @test SparseTN.unsetbit(bit"111100", bit"001101") == bit"110000"
-    @test SparseTN.copybits(0b110, [[1,2], [5,4], [3]]) == 0b11100
+    @test SparseTN.copyidx(0b110, [[1,2], [5,4], [3]], (1,2,4,8,16)) == 0b11100
 end
 
 @testset "binary with copy indices" begin

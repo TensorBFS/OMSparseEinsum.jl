@@ -154,33 +154,44 @@ end
 # masked locations are all 1s or 0s
 allsame(x::T, mask::T) where T<:Integer = allone(x, mask) || !anyone(x, mask)
 
+# copy indices from 1:ndims(t) to targets, return a new SparseTensor
+# targets is a vector of vectors, the length is the number of dimensions of the input tensors
 function copy_indices(t::SparseTensor{Tv,Ti}, targets::Vector{Vector{LT}}) where {Tv,Ti,LT}
     @assert ndims(t) == length(targets)
     isempty(targets) && return t
-    inds = Ti[]
-    vals = Tv[]
+
+    # get size of the output tensor
     vtar = vcat(targets...)
-    for (ind, val) in t.data
-        b = ind-1
-        b = copybits(b, targets)
-        push!(inds, b+1)
-        push!(vals, val)
-    end
-    szv = zeros(Ti, length(vtar))  # size of the output tensor
+    szv = zeros(Ti, length(vtar))
     for (i, js) in enumerate(targets)
         for j in js
             szv[j] = size(t, i)
         end
     end
-    sz = (szv...,)
-    return SparseTensor{Tv, Ti, length(vtar)}(sz, _size2strides(Ti, sz), Dict(zip(inds, vals)))
+    target_strides = _size2strides(Ti, szv)
+    inds, vals = _copy_indices(t, targets, collect(Ti, target_strides))
+    return SparseTensor{Tv, Ti, length(szv)}((szv...,), target_strides, Dict(zip(inds, vals)))
 end
 
-function copybits(b::Ti, targets::Vector{Vector{LT}}) where {Ti,LT}
+# copy indices from t to targets
+function _copy_indices(t::SparseTensor{Tv,Ti, N}, targets::Vector{Vector{LT}}, target_strides::Vector{Ti}) where {Tv,Ti,LT,N}
+    # copy indices
+    inds = Vector{Ti}(undef, length(t.data))
+    vals = Vector{Tv}(undef, length(t.data))
+    for (k, (ind, val)) in enumerate(t.data)
+        b = ind-1
+        b = copyidx(b, targets, target_strides)
+        inds[k] = b+1
+        vals[k] = val
+    end
+    return inds, vals
+end
+
+function copyidx(b::Ti, targets, strides) where {Ti}
     res = zero(Ti)
     for (i,t) in enumerate(targets)
         for it in t
-            res |= readbit(b, i)<<(it-1)
+            res += readbit(b, i) * strides[it]
         end
     end
     return res

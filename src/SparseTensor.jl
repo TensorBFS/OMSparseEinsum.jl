@@ -13,7 +13,7 @@ function SparseTensor(data::SparseVector{Tv,Ti}, size::NTuple{N,Ti}) where {Tv,T
     strides = _size2strides(Ti, size)
     return SparseTensor{Tv, Ti, N}(size, strides, d)
 end
-_size2strides(::Type{Ti}, size::NTuple{N,Ti}) where {N,Ti} = ntuple(i->prod(size[1:i-1]; init=one(Ti)), N)
+_size2strides(::Type{Ti}, size) where {Ti} = ntuple(i->prod(k -> size[k], 1:i-1; init=one(Ti)), length(size))
 function SparseTensor(A::AbstractArray)
     SparseTensor(SparseVector(vec(A)), size(A))
 end
