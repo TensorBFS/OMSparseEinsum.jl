@@ -1,9 +1,11 @@
 using BitBasis, SparseArrays, SparseTN
+using SparseTN: bpermute
 using Test
 
 @testset "constructor" begin
     sv = SparseVector([1,0,0,1,1,0,0,0])
-    t = bst(sv)
+    t = BinarySparseTensor(sv)
+    @test [t[i] for i in 1:8] == [1,0,0,1,1,0,0,0]
     @test ndims(t) == 3
     @test size(t) == (2,2,2)
     @test nnz(t) == 3
@@ -30,8 +32,8 @@ using Test
     t[bit"001"] = 8
     @test t[bit"001"] == 8
     sv = SparseVector([1,0,0,1,1,0,0,0,1])
-    @test findnz(t) == ([bit"000", bit"001", bit"011", bit"100"], [1,8,1,1])
-    @test_throws ArgumentError bst(sv)
+    @test sort.(collect.(findnz(t))) == ([1, 2, 4, 5], [1,1,1,8])
+    @test_throws ArgumentError BinarySparseTensor(sv)
 
     println(t)
     @test zero(t) == zeros(size(t))
@@ -39,6 +41,12 @@ using Test
     t = bst_zeros(Float64, 5)
     @test size(t) == (2,2,2,2,2)
     @test eltype(t) == Float64
+
+    # LongLongUInt
+    t = randn(2, 2)
+    t2 = BinarySparseTensor{Float64, LongLongUInt{5}}(t)
+    @test t2 isa BinarySparseTensor{Float64, LongLongUInt{5}}
+    @test t ≈ t2
 end
 
 @testset "sort and permute" begin

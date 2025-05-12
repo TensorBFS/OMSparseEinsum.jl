@@ -2,13 +2,11 @@ module SparseTN
 
 using BitBasis, SparseArrays
 using Base.Cartesian
-using OMEinsum, OMEinsum.TupleTools
-using OMEinsum: allunique
+using OMEinsum
 
-export bst_zeros, bstrand, BinarySparseTensor, sparse_contract, bst, bpermute
+export bst_zeros, bstrand, BinarySparseTensor
 
 include("BinarySparseTensor.jl")
-include("patches.jl")
 include("batched_gemm.jl")
 include("bsteinsum.jl")
 

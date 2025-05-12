@@ -27,7 +27,7 @@ end
 function count_legs(ixs...)
     lc = Dict{eltype(ixs[1]),Int}()
     for l in Iterators.flatten(ixs)
-        lc[l] = get(lc, l, 0) + 1
+        accumindex!(lc, 1, l)
     end
     return lc
 end
@@ -63,7 +63,8 @@ for ET in [:StaticEinCode, :DynamicEinCode]
         res = batched_contract(newixs, newnewiy, (newxs...,))
 
         # Duplicate (or diag)
-        return einsum(EinCode([newnewiy], iy), (res,), size_dict)
+        res = einsum(EinCode([newnewiy], iy), (res,), size_dict)
+        return res
     end
 end
 
@@ -112,7 +113,7 @@ function _get_ptraces(ix::Vector{LT}, iy::Vector{LT}) where LT
 end
 
 function _ymask_from_reds(::Type{Ti}, ndim::Int, reds) where Ti
-    ymask = flip(Ti(0), bmask(Ti, 1:ndim))
+    ymask = flip(zero(Ti), bmask(Ti, 1:ndim))
     for red in reds
         ymask = unsetbit(ymask, bmask(Ti,red[2:end]...))
     end
@@ -120,25 +121,25 @@ function _ymask_from_reds(::Type{Ti}, ndim::Int, reds) where Ti
 end
 
 function unsetbit(x::T, mask::T) where T<:Integer
-    msk = ~T(0) ⊻ mask
+    msk = ~zero(T) ⊻ mask
     x & msk
 end
 
 function _ymask_from_trs(::Type{Ti}, ndim::Int, reds) where Ti
-    ymask = flip(Ti(0), bmask(Ti, 1:ndim))
+    ymask = flip(zero(Ti), bmask(Ti, 1:ndim))
     for red in reds
         ymask = unsetbit(ymask, bmask(Ti, red...))
     end
     return ymask
 end
 
-function reduce_indices(t::BinarySparseTensor{Tv,Ti}, reds::Vector{Vector{LT}}) where {Tv,Ti,LT}
+function reduce_indices(t::BinarySparseTensor{Tv,Ti,N}, reds::Vector{Vector{LT}}) where {Tv,Ti,N,LT}
     inds = Ti[]
     vals = Tv[]
-    ymask = _ymask_from_reds(Ti, ndims(t), reds)
+    ymask = _ymask_from_reds(Ti, N, reds)
     bits = baddrs(ymask)
     red_masks = [bmask(Ti, red...) for red in reds]
-    for (ind, val) in zip(t.data.nzind, t.data.nzval)
+    for (ind, val) in t.data
         b = ind-1
         if all(red->allsame(b, red), red_masks)
             b = readbit(b, bits...)
@@ -146,27 +147,27 @@ function reduce_indices(t::BinarySparseTensor{Tv,Ti}, reds::Vector{Vector{LT}}) 
             push!(vals, val)
         end
     end
-    order = sortperm(inds)
-    return BinarySparseTensor(SparseVector(1<<length(bits), inds[order], vals[order]))
+    return BinarySparseTensor{Tv, Ti, N-sum(x -> length(x) - 1, reds)}(Dict(zip(inds, vals)))
 end
+# masked locations are all 1s or 0s
+allsame(x::T, mask::T) where T<:Integer = allone(x, mask) || !anyone(x, mask)
 
 function copy_indices(t::BinarySparseTensor{Tv,Ti}, targets::Vector{Vector{LT}}) where {Tv,Ti,LT}
     isempty(targets) && return t
     inds = Ti[]
     vals = Tv[]
     nbits = sum(length, targets)
-    for (ind, val) in zip(t.data.nzind, t.data.nzval)
+    for (ind, val) in t.data
         b = ind-1
         b = copybits(b, targets)
         push!(inds, b+1)
         push!(vals, val)
     end
-    order = sortperm(inds)
-    return BinarySparseTensor(SparseVector(1<<nbits, inds[order], vals[order]))
+    return BinarySparseTensor{Tv, Ti, nbits}(Dict(zip(inds, vals)))
 end
 
 function copybits(b::Ti, targets::Vector{Vector{LT}}) where {Ti,LT}
-    res = Ti(0)
+    res = zero(Ti)
     for (i,t) in enumerate(targets)
         for it in t
             res |= readbit(b, i)<<(it-1)
@@ -180,36 +181,30 @@ function trace_indices(t::BinarySparseTensor{Tv,Ti}; dims::Vector{Vector{LT}}) w
     bits = baddrs(ymask)
     red_masks = [bmask(Ti, red...) for red in dims]
     NO = length(bits)
-    sv = SparseVector(1<<NO, Ti[], Tv[])
-    for (ind, val) in zip(t.data.nzind, t.data.nzval)
+    sv = bst_zeros(Tv, Ti, NO)
+    for (ind, val) in t.data
         b = ind-1
         if all(red->allsame(b, red), red_masks)
             b = isempty(bits) ? zero(b) : readbit(b, bits...)
-            sv[b+1] += val
+            accumindex!(sv.data, val, b+1)
         end
     end
-    return BinarySparseTensor(sv)
+    return sv
 end
 
-Base._sum(f, t::BinarySparseTensor, ::Colon) = Base._sum(f, t.data, Colon())
-function _dropsum(f, t::BinarySparseTensor{Tv,Ti,N}, dims) where {Tv,Ti,N}
-    remdims = (setdiff(1:N, dims)...,)
-    Tf = typeof(f(Tv(0)))
+Base._sum(f, t::BinarySparseTensor, ::Colon) = Base._sum(f, values(t.data), Colon())
+function _remsum(f, t::BinarySparseTensor{Tv,Ti,N}, remdims::NTuple{NR}) where {Tv,Ti,N,NR}
+    Tf = typeof(f(zero(Tv)))
     d = Dict{Ti,Tf}()
-    for (ind, val) in zip(t.data.nzind, t.data.nzval)
+    for (ind, val) in t.data
         rd = isempty(remdims) ? zero(ind) : readbit(ind-1, remdims...)
-        d[rd] = get(d, rd, Tf(0)) + f(val)
+        accumindex!(d, f(val), rd + 1)
     end
-    ks = collect(keys(d))
-    order = sortperm(ks)
-    vals = collect(values(d))[order]
-    return bst(SparseVector(1<<length(remdims), ks[order].+1, vals))
+    return BinarySparseTensor{Tf, Ti, NR}(d)
 end
-
-_dropsum(f, t::BinarySparseTensor, dims::Colon) = Base._sum(f, t, dims)
-_dropsum(f, t::AbstractArray, dims::Colon) = Base._sum(f, t, dims)
-_dropsum(f, t::AbstractArray, dims) = dropdims(Base._sum(f, t, dims), dims=dims)
-dropsum(t::AbstractArray; dims=:) = _dropsum(identity, t, dims)
+dropsum(f, t::BinarySparseTensor; dims=:) = dims == Colon() ? Base._sum(f, t, Colon()) : _remsum(f, t, (setdiff(1:ndims(t), dims)...,))
+dropsum(f, t::AbstractArray; dims=:) = dims == Colon() ? Base._sum(f, t, Colon()) : dropdims(Base._sum(f, t, dims), dims=dims)
+dropsum(t::AbstractArray; dims=:) = dropsum(identity, t; dims)
 
 function multidropsum(t::BinarySparseTensor; dims)
     all(d->length(d) == 1, dims) && return dropsum(t; dims=first.(dims))

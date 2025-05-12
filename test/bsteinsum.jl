@@ -1,37 +1,7 @@
 using OMEinsum, SparseTN, BitBasis
-using SparseTN: get_outer, get_inner, get_inner_and_batch, get_batch, chasing_game, cleanup_duplicated_legs, cleanup_dangling_nlegs, dropsum
+using SparseTN: cleanup_duplicated_legs, cleanup_dangling_nlegs, dropsum, sparse_contract!
 using Test
 using SparseArrays
-
-function naive_chase(a::Vector{T}, b::Vector{T}) where T
-    res = Tuple{Int,Int}[]
-    for ia in 1:length(a), ib in 1:length(b)
-        a[ia] == b[ib] && push!(res, (ia, ib))
-    end
-    return res
-end
-
-@testset "chasing gate 2 tensors" begin
-    cg = chasing_game(([1,2,3], [2,3,4]))
-    @test cg == [(2,1), (3,2)]
-    cg = chasing_game(([1,2,2,3], [3,4]))
-    @test cg == [(4,1)]
-    cg = chasing_game(([1,2,2,3], [3,3,4]))
-    @test cg == [(4,1), (4,2)]
-    cg = chasing_game(([1,2,2,3,3], [3,3,4]))
-    @test cg == [(4,1), (4,2), (5,1), (5,2)]
-    @test cg == naive_chase([1,2,2,3,3], [3,3,4])
-end
-
-@testset "get inner, outer" begin
-    # indices are "iiiooobbb"
-    @test get_inner(Val(2), bit"0001111") === bit"00"
-    @test get_inner_and_batch(Val(2), Val(1), bit"0001111") === bit"000"
-    @test get_batch(Val(2), Val(1), bit"0001111") === bit"0"
-    @test get_outer(Val(2), Val(0), bit"0001111") === bit"01111"
-    @test get_outer(Val(2), Val(0), bit"0001111", bit"001") === bit"101111"
-    @test get_outer(Val(2), Val(1), bit"0001111", bit"000") === bit"01111"
-end
 
 @testset "clean up tensors" begin
     ta = bstrand(4, 1.0)
@@ -58,15 +28,19 @@ end
     ta = bstrand(4, 0.5)
     tb = bstrand(4, 0.5)
     TA, TB = Array(ta), Array(tb)
-    @test sum(sparse_contract(Val(2), Val(0), ta, tb)) ≈ sum(ein"lkji,nmji->lknm"(TA, TB))
-    @test Array(sparse_contract(Val(2), Val(0), ta, tb)) ≈ ein"lkji,nmji->lknm"(TA, TB)
+    out = OMEinsum.get_output_array((ta,tb), (fill(2, 4)...,), true)
+    @test sum(sparse_contract!(out, 2, 0, ta, tb)) ≈ sum(ein"lkji,nmji->lknm"(TA, TB))
+    out = OMEinsum.get_output_array((ta,tb), (fill(2, 4)...,), true)
+    @test sparse_contract!(out, 2, 0, ta, tb) ≈ ein"lkji,nmji->lknm"(TA, TB)
 
     # batched
     ta = bstrand(5, 0.5)
     tb = bstrand(5, 0.5)
     TA, TB = Array(ta), Array(tb)
-    @test sum(Array(sparse_contract(Val(2), Val(1), ta, tb))) ≈ sum(ein"lkbji,nmbji->lknmb"(TA, TB))
-    @test Array(sparse_contract(Val(2), Val(1), ta, tb)) ≈ ein"lkbji,nmbji->lknmb"(TA, TB)
+    out = OMEinsum.get_output_array((ta,tb), (fill(2, 5)...,), true)
+    @test sum(Array(sparse_contract!(out, 2, 1, ta, tb))) ≈ sum(ein"lkbji,nmbji->lknmb"(TA, TB))
+    out = OMEinsum.get_output_array((ta,tb), (fill(2, 5)...,), true)
+    @test Array(sparse_contract!(out, 2, 1, ta, tb)) ≈ ein"lkbji,nmbji->lknmb"(TA, TB)
 end
 
 @testset "einsum batched contract" begin
@@ -74,8 +48,8 @@ end
     @test perms == ([1, 2, 3, 4, 5], [1, 2, 3, 4, 5], (1, 2, 3, 4, 5), 2, 1)
 
     sv = SparseVector([1.0,0,0,1,1,0,0,0])
-    t1 = bst(sv)
-    t2 = bst(sv)
+    t1 = BinarySparseTensor(sv)
+    t2 = BinarySparseTensor(sv)
     T1 = Array(t1)
     T2 = Array(t2)
     @test ein"ijk,jkl->il"(t1,t2) ≈ ein"ijk,jkl->il"(T1,T2)
@@ -84,15 +58,17 @@ end
     tb = bstrand(2, 0.5)
     TA, TB = Array(ta), Array(tb)
     @test ein"ij,jk->ik"(ta,tb) ≈ ein"ij,jk->ik"(TA,TB)
-    @test ta == TA
-    @test tb == TB
+    @test ta ≈ TA
+    @test tb ≈ TB
 
+    # with batch
     ta = bstrand(7, 0.5)
     tb = bstrand(6, 0.5)
     TA, TB = Array(ta), Array(tb)
     code = ein"ijklmbc,ijbxcy->bcmlxky"
     res = code(ta, tb)
     @test res isa BinarySparseTensor
+    @test sum(res) ≈ sum(code(TA, TB))
     @test Array(res) ≈ code(TA, TB)
 end
 
@@ -101,6 +77,7 @@ end
     TA = Array(ta)
     res = SparseTN.dropsum(ta, dims=(2,4))
     @test res isa BinarySparseTensor
+    @test ndims(res) == 5
     @test Array(res) ≈ SparseTN.dropsum(TA, dims=(2,4))
     @test SparseTN.dropsum(ta) ≈ SparseTN.dropsum(TA)
     @test sum(ta) ≈ sum(TA)
@@ -151,7 +128,6 @@ end
             res = code(ta, size_info=Dict('j'=>2))
             @show code
             @test res isa BinarySparseTensor
-            @show size(res), size(code(TA, size_info=Dict('j'=>2)))
             @test res ≈ code(TA, size_info=Dict('j'=>2))
         end
     end
@@ -160,7 +136,6 @@ end
     for code in [ein"iiiiiii->iiiiii", ein"iikjjjj->ikj", ein"iikjjjl->ikj"]
         res = code(ta)
         @test res isa BinarySparseTensor
-        @show size(res), size(code(TA))
         @test res ≈ code(TA)
     end
 end
@@ -172,7 +147,6 @@ end
     @test SparseTN._get_reductions([1,2,2,4,3,1,5], [1,2,3,4,5]) == [[1,6], [2,3]]
     @test SparseTN.uniquelabels(ein"ijk,jkl->oo") == ['i', 'j', 'k', 'l', 'o']
 end
-
 
 @testset "count legs" begin
     @test SparseTN.count_legs((1,2), (2,3), (1,3)) == Dict(1=>2,2=>2,3=>2)
@@ -186,9 +160,20 @@ end
 
 @testset "binary with copy indices" begin
     sv = SparseVector([1.0,0,0,1,1,0,0,0])
-    t1 = bst(sv)
-    t2 = bst(sv)
+    t1 = BinarySparseTensor(sv)
+    t2 = BinarySparseTensor(sv)
     T1 = Array(t1)
     T2 = Array(t2)
+    @test ein"ijk,jkl->ill"(t1,t2) ≈ ein"ijk,jkl->ill"(T1,T2)
+end
+
+@testset "longlong uint" begin
+    T1 = rand(2, 2, 2)
+    T1[T1 .< 0.5] .= 0
+    T2 = rand(2, 2, 2)
+    T2[T2 .< 0.5] .= 0
+
+    t1 = BinarySparseTensor{Float64, LongLongUInt{5}}(T1)
+    t2 = BinarySparseTensor{Float64, LongLongUInt{5}}(T2)
     @test ein"ijk,jkl->ill"(t1,t2) ≈ ein"ijk,jkl->ill"(T1,T2)
 end
