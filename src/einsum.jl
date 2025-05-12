@@ -135,7 +135,7 @@ function _reduce_indices(t::SparseTensor{Tv,Ti,N}, reds, taken_strides) where {T
     for (ind, val) in t.data
         ci = linear2cartesian(t, ind)
         if all(red -> allequal(k -> ci[k], red), reds)
-            push!(inds, cartesian2linear(taken_strides, ci))
+            push!(inds, cartesian2linear(Ti, taken_strides, ci))
             push!(vals, val)
         end
     end
@@ -205,7 +205,7 @@ function _trace_indices!(out::SparseTensor{Tv,Ti,N1}, t::SparseTensor{Tv,Ti,N2},
     for (ind, val) in t.data
         ci = linear2cartesian(t, ind)
         if all(red->allequal(k -> ci[k], red), trace_dims)
-            accumindex!(out.data, val, cartesian2linear(rem_strides, ci))
+            accumindex!(out.data, val, cartesian2linear(Ti, rem_strides, ci))
         end
     end
     return out

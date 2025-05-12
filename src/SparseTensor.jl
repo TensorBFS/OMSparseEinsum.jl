@@ -40,10 +40,10 @@ function Base.getindex(t::SparseTensor{T,Ti,N}, index::Integer) where {T,Ti,N}
     return get(t.data, index, zero(T))
 end
 
-cartesian2linear(st::SparseTensor, index) = cartesian2linear(st.strides, index)
-cartesian2linear(strides::NTuple{N,Ti}, index) where {N,Ti} = sum(i->strides[i]*(index[i]-1), 1:length(index); init=one(Ti))
-linear2cartesian(st::SparseTensor, index) = linear2cartesian(st.strides, index)
-@generated function linear2cartesian(strides::NTuple{N,Ti}, index::Integer) where {N,Ti}
+cartesian2linear(st::SparseTensor{T,Ti,N}, index) where {T,Ti,N} = cartesian2linear(Ti, st.strides, index)
+cartesian2linear(::Type{Ti}, strides::NTuple{N,Ti}, index) where {N,Ti} = sum(i->strides[i]*(index[i]-1), 1:length(index); init=one(Ti))
+linear2cartesian(st::SparseTensor{T,Ti,N}, index) where {T,Ti,N} = linear2cartesian(Ti, st.strides, index)
+@generated function linear2cartesian(::Type{Ti}, strides::NTuple{N,Ti}, index::Integer) where {N,Ti}
     quote
         index = index - 1  # Convert to 0-based indexing for calculation
         @nexprs $N i -> begin
