@@ -134,6 +134,7 @@ end
     ta = strand(Float64, Int, ntuple(i->2, 7)..., 0.5)
     TA = Array(ta)
     for code in [ein"iiiiiii->iiiiii", ein"iikjjjj->ikj", ein"iikjjjl->ikj"]
+        @info code
         res = code(ta)
         @test res isa SparseTensor
         @test res ≈ code(TA)
@@ -141,7 +142,6 @@ end
 end
 
 @testset "clean up" begin
-    @test SparseTN._ymask_from_reds(Int, 5, [[2,3], [4,1]]) == bmask(5,2,4)
     @test SparseTN.allsame(bit"000110", bmask(BitStr64{6}, 2,3))
     @test !SparseTN.allsame(bit"000110", bmask(BitStr64{6}, 2,4))
     @test SparseTN._get_reductions([1,2,2,4,3,1,5], [1,2,3,4,5]) == [[1,6], [2,3]]
@@ -154,7 +154,6 @@ end
 end
 
 @testset "unsetbit, copyidx" begin
-    @test SparseTN.unsetbit(bit"111100", bit"001101") == bit"110000"
     @test SparseTN.copyidx(0b110, [[1,2], [5,4], [3]], (1,2,4,8,16)) == 0b11100
 end
 

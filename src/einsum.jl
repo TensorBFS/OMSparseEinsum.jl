@@ -113,43 +113,33 @@ function _get_ptraces(ix::Vector{LT}, iy::Vector{LT}) where LT
     return reds
 end
 
-function _ymask_from_reds(::Type{Ti}, ndim::Int, reds) where Ti
-    ymask = flip(zero(Ti), bmask(Ti, 1:ndim))
-    for red in reds
-        ymask = unsetbit(ymask, bmask(Ti,red[2:end]...))
-    end
-    return ymask
-end
-
-function unsetbit(x::T, mask::T) where T<:Integer
-    msk = ~zero(T) ⊻ mask
-    x & msk
-end
-
-function _ymask_from_trs(::Type{Ti}, ndim::Int, reds) where Ti
-    ymask = flip(zero(Ti), bmask(Ti, 1:ndim))
-    for red in reds
-        ymask = unsetbit(ymask, bmask(Ti, red...))
-    end
-    return ymask
-end
-
 function reduce_indices(t::SparseTensor{Tv,Ti,N}, reds::Vector{Vector{LT}}) where {Tv,Ti,N,LT}
+    @assert all(red -> allequal(r -> size(t, r), red), reds) "reduced dimensions are not the same: given $reds, got size: $(size(t))"
+    taken_dims = setdiff(1:ndims(t), vcat([red[2:end] for red in reds]...))
+    sz = ntuple(i->size(t, taken_dims[i]), length(taken_dims))
+    strides = _size2strides(Ti, sz)
+    fakesz = collect(size(t))
+    for red in reds, j in 2:length(red)
+        fakesz[red[j]] = 1
+    end
+    _taken_strides = _size2strides(Ti, fakesz)
+    taken_strides = ntuple(k -> k ∈ taken_dims ? _taken_strides[k] : zero(Ti), N)
+    inds, vals = _reduce_indices(t, reds, taken_strides)
+    return SparseTensor{Tv, Ti, length(sz)}(sz, strides, Dict(zip(inds, vals)))
+end
+
+function _reduce_indices(t::SparseTensor{Tv,Ti,N}, reds, taken_strides) where {Tv,Ti,N}
     inds = Ti[]
     vals = Tv[]
-    ymask = _ymask_from_reds(Ti, N, reds)
-    bits = baddrs(ymask)
-    red_masks = [bmask(Ti, red...) for red in reds]
+    @show reds, taken_strides
     for (ind, val) in t.data
-        b = ind-1
-        if all(red->allsame(b, red), red_masks)
-            b = readbit(b, bits...)
-            push!(inds, b+1)
+        ci = linear2cartesian(t, ind)
+        if all(red -> allequal(k -> ci[k], red), reds)
+            push!(inds, cartesian2linear(taken_strides, ci))
             push!(vals, val)
         end
     end
-    sz = ntuple(i->size(t, bits[i]), length(bits))
-    return SparseTensor{Tv, Ti, length(bits)}(sz, _size2strides(Ti, sz), Dict(zip(inds, vals)))
+    return inds, vals
 end
 # masked locations are all 1s or 0s
 allsame(x::T, mask::T) where T<:Integer = allone(x, mask) || !anyone(x, mask)
@@ -198,18 +188,27 @@ function copyidx(b::Ti, targets, strides) where {Ti}
 end
 
 function trace_indices(t::SparseTensor{Tv,Ti}; dims::Vector{Vector{LT}}) where {Tv,Ti,LT}
-    ymask = _ymask_from_trs(Ti, ndims(t), dims)
-    bits = baddrs(ymask)
-    red_masks = [bmask(Ti, red...) for red in dims]
-    sv = stzeros(Tv, Ti, map(bit->size(t, bit), bits)...)
+    remaining_dims = setdiff(1:ndims(t), vcat(dims...))
+    sz = ntuple(i->size(t, remaining_dims[i]), length(remaining_dims))
+    strides = _size2strides(Ti, sz)
+    out = SparseTensor{Tv, Ti, length(sz)}(sz, strides, Dict{Ti,Tv}())
+    fakesz = collect(size(t))
+    for red in dims, j in 1:length(red)
+        fakesz[red[j]] = 1
+    end
+    _rem_strides = _size2strides(Ti, fakesz)
+    rem_strides = ntuple(k -> k ∈ remaining_dims ? _rem_strides[k] : zero(Ti), ndims(t))
+    return _trace_indices!(out, t, dims, rem_strides)
+end
+
+function _trace_indices!(out::SparseTensor{Tv,Ti,N1}, t::SparseTensor{Tv,Ti,N2}, trace_dims::Vector{Vector{LT}}, rem_strides::NTuple{N2,Ti}) where {Tv,Ti,N1,N2,LT}
     for (ind, val) in t.data
-        b = ind-1
-        if all(red->allsame(b, red), red_masks)
-            b = isempty(bits) ? zero(b) : readbit(b, bits...)
-            accumindex!(sv.data, val, b+1)
+        ci = linear2cartesian(t, ind)
+        if all(red->allequal(k -> ci[k], red), trace_dims)
+            accumindex!(out.data, val, cartesian2linear(rem_strides, ci))
         end
     end
-    return sv
+    return out
 end
 
 Base._sum(f, t::SparseTensor, ::Colon) = Base._sum(f, values(t.data), Colon())
