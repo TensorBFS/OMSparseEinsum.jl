@@ -53,9 +53,9 @@ SparseArrays.nnz(t::BinarySparseTensor) = length(t.data)
 function SparseArrays.findnz(t::BinarySparseTensor{Tv,Ti,N}) where {Tv,Ti,N}
     return keys(t.data), values(t.data)
 end
+# used when converting to a dense array
 SparseArrays.nonzeroinds(t::BinarySparseTensor{Tv,Ti,N}) where {Tv, Ti, N} = collect(keys(t.data))
 SparseArrays.nonzeros(t::BinarySparseTensor{Tv,Ti,N}) where {Tv, Ti, N} = collect(values(t.data))
-# Base.Array(t::BinarySparseTensor{Tv,Ti,1}) where {Tv,Ti} = Base.Array(t.data)
 
 Base.show(io::IO, ::MIME"text/plain", t::BinarySparseTensor) = Base.show(io, t)
 function Base.show(io::IOContext, t::BinarySparseTensor{T,Ti,1}) where {T,Ti}

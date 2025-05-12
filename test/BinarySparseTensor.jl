@@ -4,6 +4,7 @@ using Test
 
 @testset "constructor" begin
     sv = SparseVector([1,0,0,1,1,0,0,0])
+    @test copy(sv) == sv
     t = BinarySparseTensor(sv)
     @test [t[i] for i in 1:8] == [1,0,0,1,1,0,0,0]
     @test ndims(t) == 3
@@ -31,8 +32,13 @@ using Test
     @test vec(t) == vec(m)
     t[bit"001"] = 8
     @test t[bit"001"] == 8
+    t[2] = 7
+    @test t[bit"001"] == 7
+    @test t[2] == 7
+    @test zero(t) isa BinarySparseTensor && nnz(zero(t)) == 0
+
     sv = SparseVector([1,0,0,1,1,0,0,0,1])
-    @test sort.(collect.(findnz(t))) == ([1, 2, 4, 5], [1,1,1,8])
+    @test sort.(collect.(findnz(t))) == ([1, 2, 4, 5], [1,1,1,7])
     @test_throws ArgumentError BinarySparseTensor(sv)
 
     println(t)

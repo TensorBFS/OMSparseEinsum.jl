@@ -5,10 +5,11 @@ function OMEinsum.get_output_array(xs::NTuple{N, BinarySparseTensor{Tv,Ti,M} whe
 end
 
 # a method to compute the batched gemm of two sparse tensors
-# g: a function that operates on the indices
+# out: the output tensor
 # dima, dimb: the dimensions of the two tensors
 # ni, nb: the inner and batch dimensions of the two tensors
 # inda, indb: the nonzero indices of the two tensors, assumed to have sorted inner and batch indices
+# vala, valb: the values of the two tensors
 function batched_gemm_loops!(out::BinarySparseTensor{Tv,Ti,M}, dima::Int, dimb::Int, ni::Int, nb::Int, inda, indb, vala::AbstractVector{Tv}, valb::AbstractVector{Tv}) where {Tv,Ti,M}
     noa, nob = dima - nb - ni, dimb - nb - ni
     offseta = dima - nb - ni
