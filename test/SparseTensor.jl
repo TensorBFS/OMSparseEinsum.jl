@@ -63,7 +63,7 @@ end
 end
 
 @testset "permutedims" begin
-    t = strand(Float64, Int, 5, 5, 5, 0.5)
+    t = strand(Float64, Int, 5, 5, 4, 0.5)
     @test ndims(t) == 3
     @test permutedims(t, (2,1,3)) isa SparseTensor
     AT = Array(t)

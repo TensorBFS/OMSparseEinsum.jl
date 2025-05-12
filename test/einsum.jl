@@ -33,14 +33,15 @@ end
     out = OMEinsum.get_output_array((ta,tb), (fill(2, 4)...,), true)
     @test sparse_contract!(out, 2, 0, ta, tb) ≈ ein"lkji,nmji->lknm"(TA, TB)
 
-    # batched
-    ta = strand(Float64, Int, 2,2,2,2,2, 0.5)
+    # batched, with nonuniform sizea
+    ta = strand(Float64, Int, 3,2,2,2,2, 0.5)
     tb = strand(Float64, Int, 2,2,2,2,2, 0.5)
     TA, TB = Array(ta), Array(tb)
-    out = OMEinsum.get_output_array((ta,tb), (fill(2, 5)...,), true)
-    @test sum(Array(sparse_contract!(out, 2, 1, ta, tb))) ≈ sum(ein"lkbji,nmbji->lknmb"(TA, TB))
-    out = OMEinsum.get_output_array((ta,tb), (fill(2, 5)...,), true)
-    @test Array(sparse_contract!(out, 2, 1, ta, tb)) ≈ ein"lkbji,nmbji->lknmb"(TA, TB)
+    out = OMEinsum.get_output_array((ta,tb), (3, 2, 2, 2, 2), true)
+    r1 = sparse_contract!(out, 2, 1, ta, tb)
+    r2 = ein"lkbji,nmbji->lknmb"(TA, TB)
+    @test sum(r1) ≈ sum(r2)
+    @test Array(r1) ≈ r2
 end
 
 @testset "einsum batched contract" begin
@@ -62,8 +63,8 @@ end
     @test tb ≈ TB
 
     # with batch
-    ta = strand(Float64, Int, 2, 2, 2, 2, 2, 2, 2, 0.5)
-    tb = strand(Float64, Int, 2, 2, 2, 2, 2, 2, 0.5)
+    ta = strand(Float64, Int, 3, 2, 2, 2, 2, 2, 4, 0.5)
+    tb = strand(Float64, Int, 3, 2, 2, 2, 4, 2, 0.5)
     TA, TB = Array(ta), Array(tb)
     code = ein"ijklmbc,ijbxcy->bcmlxky"
     res = code(ta, tb)
@@ -73,7 +74,7 @@ end
 end
 
 @testset "sum, ptrace and permute" begin
-    ta = strand(Float64, Int, 2, 2, 2, 2, 2, 2, 2, 0.7)
+    ta = strand(Float64, Int, 3, 4, 2, 2, 2, 2, 2, 0.7)
     TA = Array(ta)
     res = SparseTN.dropsum(ta, dims=(2,4))
     @test res isa SparseTensor
@@ -88,7 +89,9 @@ end
     res = ein"ijklbca->i"(ta)
     @test res isa SparseTensor
     @test Array(res) ≈ ein"ijklbca->i"(TA)
+end
 
+@testset "trace" begin
     # trace
     tb = strand(Float64, Int, 2, 2, 1.0)
     TB = Array(tb)
@@ -96,7 +99,18 @@ end
     @test res isa SparseTensor
     @test Array(res) ≈ ein"ii->"(TB)
 
-    # reduction
+    # ptrace
+    ta = strand(Float64, Int, 3, 4, 4, 2, 3, 3, 3, 0.7)
+    TA = Array(ta)
+    res = ein"ijjlbca->ailcb"(ta)
+    @test res isa SparseTensor
+    @test Array(res) |> sum ≈ ein"ijjlbca->ailcb"(TA) |> sum
+    @test Array(res) ≈ ein"ijjlbca->ailcb"(TA)
+end
+
+@testset "reduction" begin
+    ta = strand(Float64, Int, 3, 4, 4, 2, 3, 3, 3, 0.7)
+    TA = Array(ta)
     code = ein"ijjlbbb->ijlb"
     res = code(ta)
     @test res isa SparseTensor
@@ -105,14 +119,11 @@ end
     res = code(ta)
     @test res isa SparseTensor
     @test Array(res) ≈ code(TA)
+end
 
-    # ptrace
-    res = ein"ijjlbca->ailcb"(ta)
-    @test res isa SparseTensor
-    @test Array(res) |> sum ≈ ein"ijjlbca->ailcb"(TA) |> sum
-    @test Array(res) ≈ ein"ijjlbca->ailcb"(TA)
-
-    # permute
+@testset "permute" begin
+    ta = strand(Float64, Int, 3, 4, 4, 2, 3, 3, 3, 0.7)
+    TA = Array(ta)
     res = ein"ijklbca->abcijkl"(ta)
     @test res isa SparseTensor
     @test Array(res) ≈ ein"ijklbca->abcijkl"(TA)
@@ -151,10 +162,6 @@ end
 @testset "count legs" begin
     @test SparseTN.count_legs((1,2), (2,3), (1,3)) == Dict(1=>2,2=>2,3=>2)
     @test SparseTN.dangling_nleg_labels(((1,1,2), (2,3)), (5,7), SparseTN.count_legs((1,1,2), (2,3), (5,7))) == (((1,), (3,)), (5,7))
-end
-
-@testset "unsetbit, copyidx" begin
-    @test SparseTN.copyidx(0b110, [[1,2], [5,4], [3]], (1,2,4,8,16)) == 0b11100
 end
 
 @testset "binary with copy indices" begin

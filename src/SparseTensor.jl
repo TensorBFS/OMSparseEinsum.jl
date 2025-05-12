@@ -1,5 +1,5 @@
 struct SparseTensor{Tv,Ti<:Integer,N} <: AbstractSparseArray{Tv, Ti, N}
-    size::NTuple{N, Ti}
+    size::NTuple{N, Int}
     strides::NTuple{N, Ti}
     data:: Dict{Ti, Tv}
 end
@@ -24,7 +24,7 @@ function SparseTensor{Tv, Ti}(A::AbstractArray) where {Tv, Ti}
             d[Ti(i)] = A[i]
         end
     end
-    return SparseTensor{Tv, Ti}(Ti.(size(A)), _size2strides(Ti, Ti.(size(A))), d)
+    return SparseTensor{Tv, Ti, ndims(A)}(Ti.(size(A)), _size2strides(Ti, Ti.(size(A))), d)
 end
 
 function Base.getindex(t::SparseTensor{T,Ti,N}, index::Integer...) where {T,Ti,N}
@@ -114,6 +114,6 @@ end
 function Base.permutedims(src::SparseTensor{Tv,Ti,N}, dims) where {Tv,Ti,N}
     @assert length(dims) == N "dims should have length $N, got $(length(dims))"
     issorted(dims) && return src
-    dest = zero(src)
+    dest = stzeros(Tv, Ti, ntuple(i->src.size[dims[i]], N)...)
     return Base.permutedims!(dest, src, (dims...,))
 end

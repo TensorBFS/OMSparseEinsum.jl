@@ -84,14 +84,14 @@ function sparse_contract!(out::SparseTensor, ni::Int, nb::Int, a::SparseTensor{T
 end
 
 function batched_contract(ixs, iy, xs::NTuple{NT, SparseTensor}) where {NT}
-    a, b = xs
+    # tensor indices are sorted as: (inner, batch, outer)
     pa, pb, pout, Ni, Nb = analyse_batched_perm(ixs..., iy)
-    a = permutedims(a, pa)
-    b = permutedims(b, pb)
+    a = permutedims(xs[1], pa)
+    b = permutedims(xs[2], pb)
 
-    out = OMEinsum.get_output_array(xs, (fill(2, ndims(a)+ndims(b)-2Ni-Nb)...,), true)
+    out = OMEinsum.get_output_array(xs, (size(a)[1:ndims(a)-Ni-Nb]..., size(b)[1:ndims(b)-Ni]...), true)
     sparse_contract!(out, Ni, Nb, a, b)
-    permutedims(out, pout)
+    return permutedims(out, pout)
 end
 
 # sort the indices: (inner, batch, outer)
