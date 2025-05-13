@@ -1,3 +1,13 @@
+"""
+    SparseTensor{Tv,Ti,N} <: AbstractSparseArray{Tv, Ti, N}
+
+A sparse tensor is a multi-dimensional array that is stored in a sparse format.
+
+# Fields
+- `size::NTuple{N, Int}`: the size of the tensor
+- `strides::NTuple{N, Ti}`: the strides of the tensor
+- `data::Dict{Ti, Tv}`: the data of the tensor
+"""
 struct SparseTensor{Tv,Ti<:Integer,N} <: AbstractSparseArray{Tv, Ti, N}
     size::NTuple{N, Int}
     strides::NTuple{N, Ti}
@@ -40,6 +50,7 @@ function Base.getindex(t::SparseTensor{T,Ti,N}, index::Integer) where {T,Ti,N}
     return get(t.data, index, zero(T))
 end
 
+# convert between linear and cartesian indices
 cartesian2linear(st::SparseTensor{T,Ti,N}, index) where {T,Ti,N} = cartesian2linear(Ti, st.strides, index)
 cartesian2linear(::Type{Ti}, strides::NTuple{N,Ti}, index) where {N,Ti} = sum(i->strides[i]*(index[i]-1), 1:length(index); init=one(Ti))
 linear2cartesian(st::SparseTensor{T,Ti,N}, index) where {T,Ti,N} = linear2cartesian(Ti, st.strides, index)

@@ -37,9 +37,7 @@ function cleanup_duplicated_legs(ixs::Vector{Vector{LT}}, xs, iy::Vector{LT}) wh
     newixs = collect(ixs)
     for (i, ix) in enumerate(ixs)
         if !allunique(ix)  # duplicated legs
-            newix = unique(ix)
-            newxs[i] = reduce_indices(xs[i], _get_reductions(ix, newix))
-            newixs[i] = newix
+            newxs[i], newixs[i] = reduce_indices(xs[i], _get_reductions(ix))
         end
     end
     newiy = iy
@@ -75,34 +73,28 @@ function einsum_unary(ix, iy, x)
     iy_mid = unique(iy)
 
     # Remove dimensions that can be traced out
-    trace_dims = _get_ptraces(ix, iy_mid)
-    if !isempty(trace_dims)
-        x = trace_indices(x; dims=trace_dims)
-        ix = filter(ix->ix ∈ iy_mid, [ix...])
-    end
+    trace_dims, ix = _get_ptraces(ix, iy_mid)
+    x = trace_indices(x; dims=trace_dims)
 
     # Reduce duplicated indices
-    reduce_dims = _get_reductions(ix, iy_mid)
-    if !isempty(reduce_dims)
-        x = reduce_indices(x, reduce_dims)
-        ix = unique(ix)
-    end
+    reduce_dims, ix = _get_reductions(ix)
+    x = reduce_indices(x, reduce_dims)
 
     # Permute to the wanted order
     perm = map(item -> findfirst(==(item), ix), iy_mid)
     x = permutedims(x, perm)
 
     # Copy indices
-    @assert length(iy_mid) == ndims(x)
-    copy_indices(x, map(l->findall(==(l), iy), iy_mid))
+    return copy_indices(x, map(l->findall(==(l), iy), iy_mid))
 end
 
-function _get_reductions(ix::Vector{LT}, iy::Vector{LT}) where LT
+function _get_reductions(ix::Vector{LT}) where LT
     reds = Vector{Int}[]
-    for l in iy
+    newix = unique(ix)
+    for l in newix
         count(==(l), ix) > 1 && push!(reds, findall(==(l), ix))
     end
-    return reds
+    return reds, newix
 end
 
 function _get_ptraces(ix::Vector{LT}, iy::Vector{LT}) where LT
@@ -110,11 +102,12 @@ function _get_ptraces(ix::Vector{LT}, iy::Vector{LT}) where LT
     for l in unique(ix)
         l ∉ iy && push!(reds, findall(==(l), ix))
     end
-    return reds
+    return reds, filter(l->l ∈ iy, ix)
 end
 
 function reduce_indices(t::SparseTensor{Tv,Ti,N}, reds::Vector{Vector{LT}}) where {Tv,Ti,N,LT}
     @assert all(red -> allequal(r -> size(t, r), red), reds) "reduced dimensions are not the same: given $reds, got size: $(size(t))"
+    isempty(reds) && return t
     taken_dims = setdiff(1:ndims(t), vcat([red[2:end] for red in reds]...))
     sz = ntuple(i->size(t, taken_dims[i]), length(taken_dims))
     out = stzeros(Tv, Ti, sz...)
@@ -138,8 +131,8 @@ allsame(x::T, mask::T) where T<:Integer = allone(x, mask) || !anyone(x, mask)
 # copy indices from 1:ndims(t) to targets, return a new SparseTensor
 # targets is a vector of vectors, the length is the number of dimensions of the input tensors
 function copy_indices(t::SparseTensor{Tv,Ti}, targets::Vector{Vector{LT}}) where {Tv,Ti,LT}
-    @assert ndims(t) == length(targets)
-    isempty(targets) && return t
+    @assert ndims(t) == length(targets) "number of dimensions of the input tensor and the number of targets must be the same, got $(ndims(t)) and $(length(targets))"
+    all(i -> length(targets[i]) == 1 && targets[i][1] == i, 1:length(targets)) && return t  # no need to copy
 
     # get size of the output tensor
     vtar = vcat(targets...)
@@ -179,6 +172,8 @@ function copyidx(ind::Ti, targets, strides_source::NTuple{N1,Ti}, strides_target
 end
 
 function trace_indices(t::SparseTensor{Tv,Ti}; dims::Vector{Vector{LT}}) where {Tv,Ti,LT}
+    @assert all(red -> allequal(r -> size(t, r), red), dims) "traced dimensions are not the same: given $dims, got size: $(size(t))"
+    isempty(dims) && return t
     remaining_dims = setdiff(1:ndims(t), vcat(dims...))
     sz = ntuple(i->size(t, remaining_dims[i]), length(remaining_dims))
     out = stzeros(Tv, Ti, sz...)

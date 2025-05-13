@@ -30,10 +30,10 @@ res = optcode(tensors...)
 
 # output:
 # 2×2 SparseTensor{Int64, Int64, 2} with 4 stored entries:
-#   00 ₍₂₎ = 3
-#   01 ₍₂₎ = 2
-#   10 ₍₂₎ = 2
-#   11 ₍₂₎ = 1
+#   (2, 2) => 1
+#   (2, 1) => 2
+#   (1, 2) => 2
+#   (1, 1) => 3
 ```
 
-Please refer to the [examples](https://github.com/TensorBFS/OMSparseEinsum.jl/tree/main/example) for more usage examples.
+Please refer to the [examples](example/) for more usage examples.

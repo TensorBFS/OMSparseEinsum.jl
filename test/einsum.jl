@@ -24,6 +24,14 @@ using SparseArrays
     @test newiy == [1]
 end
 
+@testset "copy indices" begin
+    t = SparseTensor(rand(2,2,2))
+    @test t == OMSparseEinsum.copy_indices(t, [[1], [2], [3]])
+    t2 = OMSparseEinsum.copy_indices(t, [[1], [2], [3, 4]])
+    t3 = OMSparseEinsum.reduce_indices(t2, [[3, 4]])
+    @test t3 == t
+end
+
 @testset "sparse contract" begin
     ta = strand(Float64, Int, 2,2,2,2, 0.5)
     tb = strand(Float64, Int, 2,2,2,2, 0.5)
@@ -155,7 +163,7 @@ end
 @testset "clean up" begin
     @test OMSparseEinsum.allsame(bit"000110", bmask(BitStr64{6}, 2,3))
     @test !OMSparseEinsum.allsame(bit"000110", bmask(BitStr64{6}, 2,4))
-    @test OMSparseEinsum._get_reductions([1,2,2,4,3,1,5], [1,2,3,4,5]) == [[1,6], [2,3]]
+    @test OMSparseEinsum._get_reductions([1,2,2,4,3,1,5]) == ([[1,6], [2,3]], [1,2,4,3,5])
     @test OMSparseEinsum.uniquelabels(ein"ijk,jkl->oo") == ['i', 'j', 'k', 'l', 'o']
 end
 
