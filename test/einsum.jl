@@ -32,6 +32,13 @@ end
     @test t3 == t
 end
 
+@testset "repeat indices" begin
+    t = SparseTensor(rand(2,2,2))
+    t2 = OMSparseEinsum.repeat_indices(t, [3, 4])
+    @test size(t2) == (2, 2, 2, 3, 4)
+    @test Array(t2) == repeat(reshape(Array(t), (2, 2, 2, 1, 1)), outer=[1, 1, 1, 3, 4])
+end
+
 @testset "sparse contract" begin
     ta = strand(Float64, Int, 2,2,2,2, 0.5)
     tb = strand(Float64, Int, 2,2,2,2, 0.5)
@@ -79,6 +86,16 @@ end
     @test res isa SparseTensor
     @test sum(res) ≈ sum(code(TA, TB))
     @test Array(res) ≈ code(TA, TB)
+
+    # with new indices
+    ta = strand(Float64, Int, 3,2,2,2,2,2,4, 0.5)
+    tb = strand(Float64, Int, 3,2,2,2,4,2, 0.5)
+    TA, TB = Array(ta), Array(tb)
+    code = ein"ijklmbc,ijbxcy->bczlxky"
+    res = code(ta, tb; size_info=Dict('z'=>5))
+    @test res isa SparseTensor
+    @test sum(res) ≈ sum(code(TA, TB; size_info=Dict('z'=>5)))
+    @test Array(res) ≈ code(TA, TB; size_info=Dict('z'=>5))
 end
 
 @testset "sum, ptrace and permute" begin
