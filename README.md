@@ -3,7 +3,7 @@
 [![Build Status](https://github.com/TensorBFS/OMSparseEinsum.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/TensorBFS/OMSparseEinsum.jl/actions/workflows/CI.yml?query=branch%3Amain)
 [![codecov](https://codecov.io/gh/TensorBFS/OMSparseEinsum.jl/graph/badge.svg?token=fFtv7OCNuG)](https://codecov.io/gh/TensorBFS/OMSparseEinsum.jl)
 
-OMSparseEinsum is a Julia package for efficient sparse tensor network computations. It provides einsum notations for binary sparse tensors.
+OMSparseEinsum is a Julia package for efficient sparse tensor network computations. It extends the [OMEinsum](https://github.com/Jutho/OMEinsum.jl) package with sparse tensor support.
 
 ## Installation
 
