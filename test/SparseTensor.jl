@@ -32,6 +32,11 @@ using Test
     t = stzeros(Float64, Int, 2,2,2,2,2)
     @test size(t) == (2,2,2,2,2)
     @test eltype(t) == Float64
+
+    # conjugate
+    t = strand(ComplexF64, Int, 2,2,2,2,2, 0.5)
+    @test conj(t) == conj(Array(t))
+    @test conj(t) isa SparseTensor
 end
 
 @testset "indexing" begin

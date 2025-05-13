@@ -49,6 +49,7 @@ function Base.getindex(t::SparseTensor{T,Ti,N}, index::Integer) where {T,Ti,N}
     @boundscheck 1<=index<=length(t) || throw(BoundsError(t, index))
     return get(t.data, index, zero(T))
 end
+Base.conj(t::SparseTensor{T,Ti,N}) where {T,Ti,N} = SparseTensor{T,Ti,N}(t.size, t.strides, Dict(zip(keys(t.data), conj.(values(t.data)))))
 
 # convert between linear and cartesian indices
 cartesian2linear(st::SparseTensor{T,Ti,N}, index) where {T,Ti,N} = cartesian2linear(Ti, st.strides, index)

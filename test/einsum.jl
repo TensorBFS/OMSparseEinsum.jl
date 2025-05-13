@@ -32,6 +32,13 @@ end
     @test t3 == t
 end
 
+@testset "repeat indices" begin
+    t = SparseTensor(rand(2,2,2))
+    t2 = OMSparseEinsum.repeat_indices(t, [3, 4])
+    @test size(t2) == (2, 2, 2, 3, 4)
+    @test Array(t2) == repeat(reshape(Array(t), (2, 2, 2, 1, 1)), outer=[1, 1, 1, 3, 4])
+end
+
 @testset "sparse contract" begin
     ta = strand(Float64, Int, 2,2,2,2, 0.5)
     tb = strand(Float64, Int, 2,2,2,2, 0.5)
@@ -79,6 +86,16 @@ end
     @test res isa SparseTensor
     @test sum(res) ≈ sum(code(TA, TB))
     @test Array(res) ≈ code(TA, TB)
+
+    # with new indices
+    ta = strand(Float64, Int, 3,2,2,2,2,2,4, 0.5)
+    tb = strand(Float64, Int, 3,2,2,2,4,2, 0.5)
+    TA, TB = Array(ta), Array(tb)
+    code = ein"ijklmbc,ijbxcy->bczlxky"
+    res = code(ta, tb; size_info=Dict('z'=>5))
+    @test res isa SparseTensor
+    @test sum(res) ≈ sum(code(TA, TB; size_info=Dict('z'=>5)))
+    @test Array(res) ≈ code(TA, TB; size_info=Dict('z'=>5))
 end
 
 @testset "sum, ptrace and permute" begin
@@ -190,4 +207,15 @@ end
     t1 = SparseTensor{Float64, LongLongUInt{5}}(T1)
     t2 = SparseTensor{Float64, LongLongUInt{5}}(T2)
     @test ein"ijk,jkl->ill"(t1,t2) ≈ ein"ijk,jkl->ill"(T1,T2)
+end
+
+@testset "autodiff" begin
+    code = ein"(ij,jk),ki ->"
+    t1 = strand(Float64, Int, 2,2, 0.5)
+    t2 = strand(Float64, Int, 2,2, 0.5)
+    t3 = strand(Float64, Int, 2,2, 0.5)
+    cs, gs = cost_and_gradient(code, (t1, t2, t3))
+    dcs, dgs = cost_and_gradient(code, (Array(t1), Array(t2), Array(t3)))
+    @test all(gg -> gg isa SparseTensor, gs)
+    @test all(dgs .≈ gs)
 end

@@ -51,7 +51,7 @@ for ET in [:StaticEinCode, :DynamicEinCode]
     @eval function OMEinsum.einsum(code::$ET, xs::NTuple{NT, SparseTensor}, size_dict::Dict) where {NT}
         ixs, iy = OMEinsum.getixsv(code), OMEinsum.getiyv(code)
         if length(ixs) == 1   # unary operations
-            return einsum_unary(ixs[1], iy, xs[1])
+            return einsum_unary(ixs[1], iy, xs[1], size_dict)
         end
         # clean up dangling legs or multi-legs
         newixs, newxs, newiy = cleanup_dangling_nlegs(ixs, xs, iy)
@@ -66,10 +66,9 @@ for ET in [:StaticEinCode, :DynamicEinCode]
     end
 end
 
-function einsum_unary(ix, iy, x)
-    if !isempty(setdiff(iy, ix))
-        throw(ArgumentError("Einsum not implemented for unary operation with new output indices: $ix -> $iy"))
-    end
+function einsum_unary(ix, iy, x, size_dict)
+    input_indices = vcat(ix...)
+    repeated_indices = unique!(filter(l->l ∉ input_indices, iy))
     iy_mid = unique(iy)
 
     # Remove dimensions that can be traced out
@@ -79,6 +78,10 @@ function einsum_unary(ix, iy, x)
     # Reduce duplicated indices
     reduce_dims, ix = _get_reductions(ix)
     x = reduce_indices(x, reduce_dims)
+
+    # Add the missing indices
+    x = repeat_indices(x, Int[size_dict[l] for l in repeated_indices])
+    ix = vcat(ix, repeated_indices)
 
     # Permute to the wanted order
     perm = map(item -> findfirst(==(item), ix), iy_mid)
@@ -128,6 +131,48 @@ end
 # masked locations are all 1s or 0s
 allsame(x::T, mask::T) where T<:Integer = allone(x, mask) || !anyone(x, mask)
 
+function trace_indices(t::SparseTensor{Tv,Ti}; dims::Vector{Vector{LT}}) where {Tv,Ti,LT}
+    @assert all(red -> allequal(r -> size(t, r), red), dims) "traced dimensions are not the same: given $dims, got size: $(size(t))"
+    isempty(dims) && return t
+    remaining_dims = setdiff(1:ndims(t), vcat(dims...))
+    sz = ntuple(i->size(t, remaining_dims[i]), length(remaining_dims))
+    out = stzeros(Tv, Ti, sz...)
+    rem_strides = zeros(Ti, ndims(t))
+    rem_strides[remaining_dims] .= out.strides
+    return _trace_indices!(out, t, dims, (rem_strides...,))
+end
+
+function _trace_indices!(out::SparseTensor{Tv,Ti,N1}, t::SparseTensor{Tv,Ti,N2}, trace_dims::Vector{Vector{LT}}, rem_strides::NTuple{N2,Ti}) where {Tv,Ti,N1,N2,LT}
+    for (ind, val) in t.data
+        ci = linear2cartesian(t, ind)
+        if all(red->allequal(k -> ci[k], red), trace_dims)
+            accumindex!(out.data, val, cartesian2linear(Ti, rem_strides, ci))
+        end
+    end
+    return out
+end
+
+Base._sum(f, t::SparseTensor, ::Colon) = Base._sum(f, values(t.data), Colon())
+function _remsum(f, t::SparseTensor{Tv,Ti,N}, remdims::NTuple{NR}, newstrides::NTuple{NR,Ti}) where {Tv,Ti,N,NR}
+    Tf = typeof(f(zero(Tv)))
+    d = Dict{Ti,Tf}()
+    for (ind, val) in t.data
+        ci = linear2cartesian(t, ind)
+        rd = isempty(remdims) ? one(ind) : cartesian2linear(Ti, newstrides, ntuple(i->ci[remdims[i]], NR))
+        accumindex!(d, f(val), rd)
+    end
+    sz = map(i->size(t, i), remdims)
+    return SparseTensor{Tf, Ti, NR}(sz, _size2strides(Ti, sz), d)
+end
+dropsum(f, t::SparseTensor{Tv,Ti,N}; dims=:) where {Tv,Ti,N} = dims == Colon() ? Base._sum(f, t, Colon()) : _remsum(f, t, (setdiff(1:ndims(t), dims)...,), _size2strides(Ti, map(i->size(t, i), setdiff(1:ndims(t), dims))))
+dropsum(f, t::AbstractArray; dims=:) = dims == Colon() ? Base._sum(f, t, Colon()) : dropdims(Base._sum(f, t, dims), dims=dims)
+dropsum(t::AbstractArray; dims=:) = dropsum(identity, t; dims)
+
+function multidropsum(t::SparseTensor; dims)
+    all(d->length(d) == 1, dims) && return dropsum(t; dims=first.(dims))
+    trace_indices(t; dims=dims)
+end
+
 # copy indices from 1:ndims(t) to targets, return a new SparseTensor
 # targets is a vector of vectors, the length is the number of dimensions of the input tensors
 function copy_indices(t::SparseTensor{Tv,Ti}, targets::Vector{Vector{LT}}) where {Tv,Ti,LT}
@@ -171,44 +216,25 @@ function copyidx(ind::Ti, targets, strides_source::NTuple{N1,Ti}, strides_target
     return res
 end
 
-function trace_indices(t::SparseTensor{Tv,Ti}; dims::Vector{Vector{LT}}) where {Tv,Ti,LT}
-    @assert all(red -> allequal(r -> size(t, r), red), dims) "traced dimensions are not the same: given $dims, got size: $(size(t))"
-    isempty(dims) && return t
-    remaining_dims = setdiff(1:ndims(t), vcat(dims...))
-    sz = ntuple(i->size(t, remaining_dims[i]), length(remaining_dims))
-    out = stzeros(Tv, Ti, sz...)
-    rem_strides = zeros(Ti, ndims(t))
-    rem_strides[remaining_dims] .= out.strides
-    return _trace_indices!(out, t, dims, (rem_strides...,))
-end
-
-function _trace_indices!(out::SparseTensor{Tv,Ti,N1}, t::SparseTensor{Tv,Ti,N2}, trace_dims::Vector{Vector{LT}}, rem_strides::NTuple{N2,Ti}) where {Tv,Ti,N1,N2,LT}
-    for (ind, val) in t.data
-        ci = linear2cartesian(t, ind)
-        if all(red->allequal(k -> ci[k], red), trace_dims)
-            accumindex!(out.data, val, cartesian2linear(Ti, rem_strides, ci))
-        end
-    end
+# repeat the tensor by extending extra dimensions
+# e.g. if `t` has size (Nx, Ny), and `sizes` is [S1, S2], then the output tensor will have size (Nx, Ny, S1, S2)
+function repeat_indices(t::SparseTensor{Tv,Ti}, sizes::Vector{Int}) where {Tv,Ti}
+    isempty(sizes) && return t
+    # get size of the output tensor
+    szv = (size(t)..., sizes...)
+    target_strides = _size2strides(Ti, szv)
+    out = SparseTensor{Tv, Ti, length(szv)}(szv, target_strides, Dict{Ti,Tv}())
+    _repeat_indices!(out, t, prod(sizes), length(t))
     return out
 end
 
-Base._sum(f, t::SparseTensor, ::Colon) = Base._sum(f, values(t.data), Colon())
-function _remsum(f, t::SparseTensor{Tv,Ti,N}, remdims::NTuple{NR}, newstrides::NTuple{NR,Ti}) where {Tv,Ti,N,NR}
-    Tf = typeof(f(zero(Tv)))
-    d = Dict{Ti,Tf}()
+# copy indices from t to targets
+function _repeat_indices!(out::SparseTensor{Tv,Ti, M}, t::SparseTensor{Tv,Ti, N}, nreps::Int, stride::Ti) where {Tv,Ti,N,M}
+    @assert nreps * stride == length(out) "stride mismatch: $nreps * $stride != $(length(out))"
     for (ind, val) in t.data
-        ci = linear2cartesian(t, ind)
-        rd = isempty(remdims) ? one(ind) : cartesian2linear(Ti, newstrides, ntuple(i->ci[remdims[i]], NR))
-        accumindex!(d, f(val), rd)
+        for i in 1:nreps
+            accumindex!(out.data, val, ind + (i-1) * stride)
+        end
     end
-    sz = map(i->size(t, i), remdims)
-    return SparseTensor{Tf, Ti, NR}(sz, _size2strides(Ti, sz), d)
-end
-dropsum(f, t::SparseTensor{Tv,Ti,N}; dims=:) where {Tv,Ti,N} = dims == Colon() ? Base._sum(f, t, Colon()) : _remsum(f, t, (setdiff(1:ndims(t), dims)...,), _size2strides(Ti, map(i->size(t, i), setdiff(1:ndims(t), dims))))
-dropsum(f, t::AbstractArray; dims=:) = dims == Colon() ? Base._sum(f, t, Colon()) : dropdims(Base._sum(f, t, dims), dims=dims)
-dropsum(t::AbstractArray; dims=:) = dropsum(identity, t; dims)
-
-function multidropsum(t::SparseTensor; dims)
-    all(d->length(d) == 1, dims) && return dropsum(t; dims=first.(dims))
-    trace_indices(t; dims=dims)
+    return out
 end
