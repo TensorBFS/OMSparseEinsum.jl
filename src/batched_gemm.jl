@@ -1,4 +1,4 @@
-function OMEinsum.get_output_array(xs::NTuple{N, SparseTensor{Tv,Ti,M} where {Tv,M}}, size::NTuple, fillzero::Bool) where {N,Ti}
+function OMEinsum.get_output_array(xs::NTuple{N, SparseTensor{Tv,Ti,M} where {Tv,M}}, size, fillzero::Bool) where {N,Ti}
     return stzeros(promote_type(map(eltype,xs)...), Ti, size...)
 end
 

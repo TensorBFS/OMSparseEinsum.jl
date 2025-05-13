@@ -208,3 +208,14 @@ end
     t2 = SparseTensor{Float64, LongLongUInt{5}}(T2)
     @test ein"ijk,jkl->ill"(t1,t2) ≈ ein"ijk,jkl->ill"(T1,T2)
 end
+
+@testset "autodiff" begin
+    code = ein"(ij,jk),ki ->"
+    t1 = strand(Float64, Int, 2,2, 0.5)
+    t2 = strand(Float64, Int, 2,2, 0.5)
+    t3 = strand(Float64, Int, 2,2, 0.5)
+    cs, gs = cost_and_gradient(code, (t1, t2, t3))
+    dcs, dgs = cost_and_gradient(code, (Array(t1), Array(t2), Array(t3)))
+    @test all(gg -> gg isa SparseTensor, gs)
+    @test all(dgs .≈ gs)
+end
